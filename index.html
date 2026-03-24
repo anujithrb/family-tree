@@ -363,6 +363,33 @@
         .attr('stroke', '#aaaaaa')
         .attr('stroke-width', 1.5);
     }
+
+    // ===== ZOOM + PAN =====
+    function setupZoom() {
+      const vw = window.innerWidth;
+
+      // Total tree canvas width (used for horizontal fit-on-load)
+      const treeW = couples[0].subtreeWidth + PADDING * 2;
+
+      // Fit entire tree horizontally on load; otherwise center it
+      const scale    = treeW > vw ? vw / treeW : 1;
+      const translateX = (vw - treeW * scale) / 2;
+      const translateY = PADDING * scale;
+
+      const initialTransform = d3.zoomIdentity
+        .translate(translateX, translateY)
+        .scale(scale);
+
+      const zoom = d3.zoom()
+        .scaleExtent([0.2, 3])
+        .on('zoom', event => {
+          zoomLayer.attr('transform', event.transform);
+        });
+
+      svg
+        .call(zoom)
+        .call(zoom.transform, initialTransform);
+    }
   </script>
 </body>
 </html>

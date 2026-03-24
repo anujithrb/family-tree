@@ -135,6 +135,38 @@
         });
       }
     }
+
+    // ===== LAYOUT PASS 2: SUBTREE WIDTHS (bottom-up) =====
+    function computeSubtreeWidths() {
+      const COUPLE_W = NODE_W * 2 + SPOUSE_GAP; // 252px — minimum width for any couple
+
+      const maxGen = Math.max(...couples.map(c => c.gen));
+
+      for (let gen = maxGen; gen >= 0; gen--) {
+        couples.filter(c => c.gen === gen).forEach(couple => {
+          // Children who themselves form a couple (coupled children)
+          const childCouples = couple.children
+            .map(pid => personCouple[pid])
+            .filter(Boolean);
+
+          // Children who appear in no couple (solo leaf children)
+          const soloCount = couple.children.filter(pid => !personCouple[pid]).length;
+          const soloWidth = soloCount > 0
+            ? soloCount * NODE_W + (soloCount - 1) * SUBTREE_GAP
+            : 0;
+
+          if (childCouples.length === 0) {
+            // Leaf couple: at least couple unit width; expand if solo leaves need more
+            couple.subtreeWidth = Math.max(COUPLE_W, soloWidth || COUPLE_W);
+          } else {
+            const coupledWidth = childCouples.reduce((s, cc) => s + cc.subtreeWidth, 0)
+              + (childCouples.length - 1) * SUBTREE_GAP;
+            // Take the larger of coupled-children span or solo-leaf span
+            couple.subtreeWidth = Math.max(coupledWidth, soloWidth);
+          }
+        });
+      }
+    }
   </script>
 </body>
 </html>

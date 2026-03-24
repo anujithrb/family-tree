@@ -167,6 +167,56 @@
         });
       }
     }
+
+    // ===== LAYOUT PASS 3: X/Y POSITIONS (top-down) =====
+    function computePositions() {
+      const root = couples[0];
+      root.cx = root.subtreeWidth / 2 + PADDING;
+
+      const queue = [root];
+      while (queue.length) {
+        const couple = queue.shift();
+
+        // Y from generation
+        couple.y    = couple.gen * ROW_HEIGHT + PADDING;
+        couple.yBot = couple.y + NODE_H;
+
+        // Spouse card left edges (cards touch the gap, no overlap)
+        couple.spouseAX = couple.cx - SPOUSE_GAP / 2 - NODE_W;
+        couple.spouseBX = couple.cx + SPOUSE_GAP / 2;
+
+        // Position child COUPLES centered under this couple
+        const childCouples = couple.children
+          .map(pid => personCouple[pid])
+          .filter(Boolean);
+
+        if (childCouples.length > 0) {
+          const totalW = childCouples.reduce((s, cc) => s + cc.subtreeWidth, 0)
+            + (childCouples.length - 1) * SUBTREE_GAP;
+          let x = couple.cx - totalW / 2;
+          childCouples.forEach(cc => {
+            cc.cx = x + cc.subtreeWidth / 2;
+            x += cc.subtreeWidth + SUBTREE_GAP;
+            queue.push(cc);
+          });
+        }
+
+        // Position SOLO LEAF children (evenly spaced under this couple)
+        const soloIds = couple.children.filter(pid => !personCouple[pid]);
+        if (soloIds.length > 0) {
+          const soloGen = couple.gen + 1;
+          const totalW = soloIds.length * NODE_W + (soloIds.length - 1) * SUBTREE_GAP;
+          let x = couple.cx - totalW / 2;
+          soloIds.forEach(pid => {
+            const p = personMap[pid];
+            p.soloX  = x;
+            p.soloY  = soloGen * ROW_HEIGHT + PADDING;
+            p.soloCX = x + NODE_W / 2;
+            x += NODE_W + SUBTREE_GAP;
+          });
+        }
+      }
+    }
   </script>
 </body>
 </html>

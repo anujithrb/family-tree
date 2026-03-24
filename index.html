@@ -291,6 +291,65 @@
         .attr('font-family', 'system-ui, sans-serif')
         .text(d => yearsLabel(d.person));
     }
+
+    function renderConnectors() {
+      const lines = [];
+
+      couples.forEach(couple => {
+        // 1. Horizontal spouse connector (right edge of spouseA → left edge of spouseB)
+        lines.push({
+          x1: couple.spouseAX + NODE_W,
+          y1: couple.y + NODE_H / 2,
+          x2: couple.spouseBX,
+          y2: couple.y + NODE_H / 2,
+        });
+
+        // 2. Child connectors
+        const childCouples = couple.children
+          .map(pid => personCouple[pid])
+          .filter(Boolean);
+        const soloIds = couple.children.filter(pid => !personCouple[pid]);
+
+        const allChildren = [
+          ...childCouples.map(cc => ({ cx: cc.cx,               y: cc.y    })),
+          ...soloIds.map(pid => {
+            const p = personMap[pid];
+            return { cx: p.soloCX, y: p.soloY };
+          }),
+        ];
+
+        if (allChildren.length === 0) return;
+
+        const yBot = couple.yBot;
+        const midY = yBot + VERTICAL_GAP / 2;
+        const cxs  = allChildren.map(c => c.cx);
+        const minCX = Math.min(...cxs);
+        const maxCX = Math.max(...cxs);
+
+        // Drop from couple midpoint down to midY
+        lines.push({ x1: couple.cx, y1: yBot,  x2: couple.cx, y2: midY });
+
+        // Horizontal bar across all children (only when >1 child)
+        if (allChildren.length > 1) {
+          lines.push({ x1: minCX, y1: midY, x2: maxCX, y2: midY });
+        }
+
+        // Vertical drops from bar to each child top
+        allChildren.forEach(child => {
+          lines.push({ x1: child.cx, y1: midY, x2: child.cx, y2: child.y });
+        });
+      });
+
+      connectorLayer
+        .selectAll('line.connector')
+        .data(lines)
+        .join('line')
+        .attr('class', 'connector')
+        .attr('x1', d => d.x1).attr('y1', d => d.y1)
+        .attr('x2', d => d.x2).attr('y2', d => d.y2)
+        .attr('stroke', '#aaaaaa')
+        .attr('stroke-width', 1.5);
+    }
   </script>
 </body>
 </html>

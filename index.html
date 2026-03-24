@@ -213,6 +213,84 @@
         }
       }
     }
+
+    // ===== RENDER =====
+    const svg = d3.select('#tree');
+    const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
+    const connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
+    const nodeLayer     = zoomLayer.append('g').attr('class', 'nodes');
+
+    function yearsLabel(p) {
+      return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
+    }
+
+    function renderNodes() {
+      // Build flat list: all coupled people + all solo leaf people
+      const nodeData = [];
+
+      couples.forEach(couple => {
+        nodeData.push({ person: personMap[couple.spouseA], x: couple.spouseAX, y: couple.y });
+        nodeData.push({ person: personMap[couple.spouseB], x: couple.spouseBX, y: couple.y });
+      });
+
+      people
+        .filter(p => p.soloX !== undefined)
+        .forEach(p => nodeData.push({ person: p, x: p.soloX, y: p.soloY }));
+
+      const groups = nodeLayer
+        .selectAll('g.person')
+        .data(nodeData, d => d.person.id)
+        .join('g')
+        .attr('class', 'person')
+        .attr('transform', d => `translate(${d.x},${d.y})`);
+
+      // Background card
+      groups.append('rect')
+        .attr('width', NODE_W)
+        .attr('height', NODE_H)
+        .attr('rx', 8)
+        .attr('fill',   d => C[d.person.gender].fill)
+        .attr('stroke', d => C[d.person.gender].stroke)
+        .attr('stroke-width', 1.5);
+
+      // Avatar circle
+      groups.append('circle')
+        .attr('cx', 22)
+        .attr('cy', NODE_H / 2)
+        .attr('r', 18)
+        .attr('fill', d => C[d.person.gender].avatar);
+
+      // Initial letter in avatar
+      groups.append('text')
+        .attr('x', 22)
+        .attr('y', NODE_H / 2)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('fill', '#ffffff')
+        .attr('font-size', '15px')
+        .attr('font-weight', '700')
+        .attr('font-family', 'system-ui, sans-serif')
+        .text(d => d.person.name[0]);
+
+      // Name
+      groups.append('text')
+        .attr('x', 46)
+        .attr('y', NODE_H / 2 - 9)
+        .attr('fill', '#ffffff')
+        .attr('font-size', '12px')
+        .attr('font-weight', '600')
+        .attr('font-family', 'system-ui, sans-serif')
+        .text(d => d.person.name);
+
+      // Years
+      groups.append('text')
+        .attr('x', 46)
+        .attr('y', NODE_H / 2 + 9)
+        .attr('fill', d => C[d.person.gender].years)
+        .attr('font-size', '10px')
+        .attr('font-family', 'system-ui, sans-serif')
+        .text(d => yearsLabel(d.person));
+    }
   </script>
 </body>
 </html>

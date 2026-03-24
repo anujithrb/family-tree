@@ -115,10 +115,6 @@
       personCouple[c.spouseB] = c;
     });
 
-    // personId → the couple where they appear as a child
-    const personParentCouple = {};
-    couples.forEach(c => c.children.forEach(pid => { personParentCouple[pid] = c; }));
-
     // ===== LAYOUT PASS 1: GENERATION ASSIGNMENT =====
     function assignGenerations() {
       const root = couples[0]; // c1 — the root ancestor couple

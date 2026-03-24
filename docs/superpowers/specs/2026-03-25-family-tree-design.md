@@ -3,7 +3,7 @@ Date: 2026-03-25
 
 ## Overview
 
-A single self-contained `index.html` file that renders a 5-generation family tree using D3.js v7 (loaded from CDN). No build step, no server required — open in any browser. No interactivity (static visualization).
+A single self-contained `index.html` file that renders a 5-generation family tree using D3.js v7 (loaded from CDN). No build step, no server required — open in any browser. Supports mouse/trackpad zoom and pan so the full tree is explorable on any screen size.
 
 ---
 
@@ -16,7 +16,7 @@ A single self-contained `index.html` file that renders a 5-generation family tre
 - Each person node: rounded-rect card with circular avatar (initials), name, and birth–death years
 - Gender coloring: blue for male, rose for female
 - Connector lines: neutral gray, 1.5px stroke
-- No interactivity (zoom/pan not included)
+- Zoom and pan via D3 `zoom` behavior (scroll to zoom, drag to pan)
 
 ---
 
@@ -28,7 +28,7 @@ A single self-contained `index.html` file that renders a 5-generation family tre
 | Library | D3.js v7 (CDN) |
 | Data | Embedded JS arrays in the HTML |
 | Font | `system-ui, sans-serif` |
-| Interactivity | None |
+| Interactivity | Zoom (scroll) + Pan (drag) via `d3.zoom()` |
 
 ---
 
@@ -203,8 +203,12 @@ For a couple with a single child, steps 2 and 3 merge into one straight vertical
 
 - Total width = root couple's `subtreeWidth` + 80px padding (40px each side)
 - Total height = `5 * ROW_HEIGHT + 80px` padding (40px each side)
-- Wrapped in a `<div style="overflow:auto">` so the page scrolls if the tree exceeds the viewport
-- No D3 zoom/pan
+- The `<svg>` fills the full browser viewport (`width: 100vw; height: 100vh`)
+- All tree content is rendered inside a `<g class="zoom-layer">` child of the SVG
+- `d3.zoom()` is applied to the SVG element and updates `zoom-layer` via `transform` attribute
+- **Initial transform**: tree is centered in the viewport on load (`translateX = (viewportW - treeW) / 2`, `translateY = 40`, `scale = 1`). If the tree is wider than the viewport, initial scale is set to `viewportW / treeW` so the full tree fits on first load.
+- **Zoom extent**: `scaleExtent([0.2, 3])` — minimum 20%, maximum 300%
+- A small on-screen hint (`"Scroll to zoom · Drag to pan"`) is shown in the bottom-left corner in muted text, no interactivity needed on the hint itself
 
 ---
 

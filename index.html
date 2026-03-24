@@ -216,10 +216,6 @@
 
     // ===== RENDER =====
     let svg, zoomLayer, connectorLayer, nodeLayer;
-    svg = d3.select('#tree');
-    zoomLayer = svg.append('g').attr('class', 'zoom-layer');
-    connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
-    nodeLayer = zoomLayer.append('g').attr('class', 'nodes');
 
     function yearsLabel(p) {
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
@@ -390,6 +386,27 @@
         .call(zoom)
         .call(zoom.transform, initialTransform);
     }
+
+    // ===== INIT =====
+    (function init() {
+      // Set up SVG layers
+      svg = d3.select('#tree');
+      zoomLayer = svg.append('g').attr('class', 'zoom-layer');
+      connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
+      nodeLayer      = zoomLayer.append('g').attr('class', 'nodes');
+
+      // Layout passes (must run in this order)
+      assignGenerations();
+      computeSubtreeWidths();
+      computePositions();
+
+      // Render (connectors first so they appear behind nodes)
+      renderConnectors();
+      renderNodes();
+
+      // Zoom + pan
+      setupZoom();
+    })();
   </script>
 </body>
 </html>

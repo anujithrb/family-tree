@@ -215,10 +215,11 @@
     }
 
     // ===== RENDER =====
-    const svg = d3.select('#tree');
-    const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
-    const connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
-    const nodeLayer     = zoomLayer.append('g').attr('class', 'nodes');
+    let svg, zoomLayer, connectorLayer, nodeLayer;
+    svg = d3.select('#tree');
+    zoomLayer = svg.append('g').attr('class', 'zoom-layer');
+    connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
+    nodeLayer = zoomLayer.append('g').attr('class', 'nodes');
 
     function yearsLabel(p) {
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
@@ -244,8 +245,20 @@
         .attr('class', 'person')
         .attr('transform', d => `translate(${d.x},${d.y})`);
 
-      // Background card
-      groups.append('rect')
+      // Define per-node clip path so content stays within card bounds
+      groups.append('clipPath')
+        .attr('id', d => `clip-${d.person.id}`)
+        .append('rect')
+        .attr('width', NODE_W)
+        .attr('height', NODE_H)
+        .attr('rx', 8);
+
+      // Inner group clipped to card bounds
+      const inner = groups.append('g')
+        .attr('clip-path', d => `url(#clip-${d.person.id})`);
+
+      // Background card — append to inner
+      inner.append('rect')
         .attr('width', NODE_W)
         .attr('height', NODE_H)
         .attr('rx', 8)
@@ -253,15 +266,15 @@
         .attr('stroke', d => C[d.person.gender].stroke)
         .attr('stroke-width', 1.5);
 
-      // Avatar circle
-      groups.append('circle')
+      // Avatar circle — append to inner
+      inner.append('circle')
         .attr('cx', 22)
         .attr('cy', NODE_H / 2)
         .attr('r', 18)
         .attr('fill', d => C[d.person.gender].avatar);
 
-      // Initial letter in avatar
-      groups.append('text')
+      // Initial letter in avatar — append to inner
+      inner.append('text')
         .attr('x', 22)
         .attr('y', NODE_H / 2)
         .attr('text-anchor', 'middle')
@@ -272,8 +285,8 @@
         .attr('font-family', 'system-ui, sans-serif')
         .text(d => d.person.name[0]);
 
-      // Name
-      groups.append('text')
+      // Name — append to inner
+      inner.append('text')
         .attr('x', 46)
         .attr('y', NODE_H / 2 - 9)
         .attr('fill', '#ffffff')
@@ -282,8 +295,8 @@
         .attr('font-family', 'system-ui, sans-serif')
         .text(d => d.person.name);
 
-      // Years
-      groups.append('text')
+      // Years — append to inner
+      inner.append('text')
         .attr('x', 46)
         .attr('y', NODE_H / 2 + 9)
         .attr('fill', d => C[d.person.gender].years)

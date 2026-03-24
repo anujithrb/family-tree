@@ -90,6 +90,34 @@
       { id:"c14", spouseA:"p27", spouseB:"p28", children:["p37"]           },
       { id:"c15", spouseA:"p29", spouseB:"p30", children:["p38"]           },
     ];
+
+    // ===== CONSTANTS =====
+    const NODE_W      = 120;   // person card width
+    const NODE_H      = 60;    // person card height
+    const SPOUSE_GAP  = 12;    // gap between the two spouse cards
+    const SUBTREE_GAP = 48;    // gap between sibling subtrees
+    const ROW_HEIGHT  = 120;   // vertical distance between generation tops (NODE_H + VERTICAL_GAP)
+    const VERTICAL_GAP = 60;   // space between bottom of parent row and top of child row
+    const PADDING     = 40;    // canvas padding on all sides
+
+    const C = {
+      M: { fill:'#1e3a5f', stroke:'#2a5fa0', avatar:'#2a5fa0', years:'#aac8f0' },
+      F: { fill:'#3d1f2e', stroke:'#a04a6a', avatar:'#a04a6a', years:'#f0c0d0' },
+    };
+
+    // ===== HELPER MAPS =====
+    const personMap = Object.fromEntries(people.map(p => [p.id, p]));
+
+    // personId → the couple where they are spouseA or spouseB
+    const personCouple = {};
+    couples.forEach(c => {
+      personCouple[c.spouseA] = c;
+      personCouple[c.spouseB] = c;
+    });
+
+    // personId → the couple where they appear as a child
+    const personParentCouple = {};
+    couples.forEach(c => c.children.forEach(pid => { personParentCouple[pid] = c; }));
   </script>
 </body>
 </html>

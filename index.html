@@ -12,7 +12,7 @@
     svg#tree:active { cursor: grabbing; }
     #hint {
       position: fixed; bottom: 16px; left: 20px;
-      color: #444; font: 12px/1 system-ui, sans-serif;
+      color: #666; font: 12px/1 system-ui, sans-serif;
       pointer-events: none; user-select: none;
     }
   </style>
@@ -363,12 +363,17 @@
     // ===== ZOOM + PAN =====
     function setupZoom() {
       const vw = window.innerWidth;
+      const vh = window.innerHeight;
 
-      // Total tree canvas width (used for horizontal fit-on-load)
+      // Total tree canvas width and height (used for fit-on-load)
       const treeW = couples[0].subtreeWidth + PADDING * 2;
+      const treeH = 5 * ROW_HEIGHT + PADDING * 2;
 
-      // Fit entire tree horizontally on load; otherwise center it
-      const scale    = treeW > vw ? vw / treeW : 1;
+      // Fit entire tree both horizontally and vertically on load; otherwise center it
+      const scale    = Math.min(
+        treeW > vw ? vw / treeW : 1,
+        treeH > vh ? vh / treeH : 1
+      );
       const translateX = (vw - treeW * scale) / 2;
       const translateY = PADDING * scale;
 

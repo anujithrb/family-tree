@@ -36,6 +36,32 @@
     #ctx-menu .ctx-confirm .btn-danger { background: #7a1e1e; color: #fff; }
     #ctx-menu .ctx-confirm .btn-cancel { background: #333; color: #fff; }
     #ctx-menu .ctx-error { padding: 6px 16px; color: #f08080; font-size: 11px; }
+    #modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+}
+#modal-overlay.open { display: flex; }
+#modal-box {
+  background: #1a1d27; border: 1px solid #333; border-radius: 10px;
+  padding: 24px; width: 320px; font: 14px/1.5 system-ui, sans-serif; color: #fff;
+}
+#modal-box h2 { margin-bottom: 16px; font-size: 16px; }
+#modal-box label { display: block; margin-bottom: 12px; color: #aaa; font-size: 12px; }
+#modal-box input[type=text], #modal-box input[type=number] {
+  display: block; width: 100%; margin-top: 4px; padding: 7px 10px;
+  background: #0f1117; border: 1px solid #444; border-radius: 6px;
+  color: #fff; font: inherit;
+}
+#modal-box .gender-row { display: flex; gap: 16px; margin-top: 4px; }
+#modal-box .gender-row label { display: flex; align-items: center; gap: 6px;
+  color: #fff; font-size: 13px; cursor: pointer; }
+#modal-box .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+#modal-box .modal-actions button {
+  padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font: inherit;
+}
+#modal-box .btn-primary { background: #2a5fa0; color: #fff; }
+#modal-box .btn-secondary { background: #333; color: #fff; }
+#modal-error { color: #f08080; font-size: 12px; margin-top: 10px; min-height: 16px; }
   </style>
 </head>
 <body>
@@ -48,6 +74,31 @@
     <button id="ctx-remove">Remove</button>
     <div id="ctx-confirm-area"></div>
   </div>
+  <div id="modal-overlay">
+  <div id="modal-box">
+    <h2 id="modal-title">Add Spouse</h2>
+    <label>Name
+      <input type="text" id="modal-name" placeholder="Full name">
+    </label>
+    <label>Birth year
+      <input type="number" id="modal-birth" placeholder="e.g. 1990" min="1000" max="2100">
+    </label>
+    <label>Death year (optional)
+      <input type="number" id="modal-death" placeholder="leave blank if living" min="1000" max="2100">
+    </label>
+    <label>Gender
+      <div class="gender-row">
+        <label><input type="radio" name="modal-gender" value="M"> Male</label>
+        <label><input type="radio" name="modal-gender" value="F"> Female</label>
+      </div>
+    </label>
+    <div id="modal-error"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-cancel">Cancel</button>
+      <button class="btn-primary"   id="modal-submit">Add</button>
+    </div>
+  </div>
+</div>
   <script>
     // ===== STATE (populated by init) =====
     let people  = [];
@@ -279,6 +330,84 @@
           document.getElementById('ctx-confirm-no').addEventListener('click', hideCtxMenu);
         }
       });
+    });
+
+    // ===== MODAL =====
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalTitle   = document.getElementById('modal-title');
+    const modalName    = document.getElementById('modal-name');
+    const modalBirth   = document.getElementById('modal-birth');
+    const modalDeath   = document.getElementById('modal-death');
+    const modalError   = document.getElementById('modal-error');
+    const modalSubmit  = document.getElementById('modal-submit');
+    let modalContext   = null; // { mode: 'spouse'|'child', target: d }
+
+    function openModal(mode, d) {
+      modalContext = { mode, target: d };
+      modalTitle.textContent = mode === 'spouse' ? 'Add Spouse' : 'Add Child';
+      modalName.value  = '';
+      modalBirth.value = '';
+      modalDeath.value = '';
+      document.querySelectorAll('input[name="modal-gender"]').forEach(r => r.checked = false);
+      modalError.textContent = '';
+      modalOverlay.classList.add('open');
+      modalName.focus();
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      modalContext = null;
+    }
+
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+
+    modalSubmit.addEventListener('click', async () => {
+      if (!modalContext) return;
+      modalError.textContent = '';
+
+      const name   = modalName.value.trim();
+      const birth  = parseInt(modalBirth.value, 10);
+      const death  = modalDeath.value ? parseInt(modalDeath.value, 10) : null;
+      const gender = document.querySelector('input[name="modal-gender"]:checked')?.value;
+
+      if (!name)            { modalError.textContent = 'Name is required.'; return; }
+      if (!birth)           { modalError.textContent = 'Birth year is required.'; return; }
+      if (birth < 1000 || birth > 2100) { modalError.textContent = 'Birth year must be between 1000 and 2100.'; return; }
+      if (death !== null && death < birth) { modalError.textContent = 'Death year must be ≥ birth year.'; return; }
+      if (!gender)          { modalError.textContent = 'Gender is required.'; return; }
+
+      const personData = { name, birth, death, gender };
+      const { mode, target } = modalContext;
+
+      try {
+        modalSubmit.disabled = true;
+        let res;
+        if (mode === 'spouse') {
+          res = await fetch('/api/couples', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ existingPersonId: target.person.id, spouse: personData }),
+          });
+        } else {
+          const coupleId = target.coupleId;
+          res = await fetch(`/api/couples/${coupleId}/children`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(personData),
+          });
+        }
+
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Request failed');
+
+        closeModal();
+        await init();
+      } catch (err) {
+        modalError.textContent = err.message;
+      } finally {
+        modalSubmit.disabled = false;
+      }
     });
 
     function renderNodes() {

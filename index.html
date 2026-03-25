@@ -266,9 +266,9 @@
           const res = await fetch(`/api/people/${personId}`, { method: 'DELETE' });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Request failed');
+          await init();
           ctxInflight = false;
           hideCtxMenu();
-          await init();
         } catch (err) {
           ctxInflight = false;
           ctxConfirmArea.innerHTML = `

@@ -21,75 +21,11 @@
   <svg id="tree"></svg>
   <div id="hint">Scroll to zoom · Drag to pan</div>
   <script>
-    // ===== DATA =====
-    const people = [
-      // Gen 1
-      { id:"p1",  name:"Arthur Smith",   birth:1910, death:1985, gender:"M" },
-      { id:"p2",  name:"Eleanor Grant",  birth:1913, death:1990, gender:"F" },
-      // Gen 2 — children of c1 + married-in partners
-      { id:"p3",  name:"Thomas Smith",   birth:1935, death:2005, gender:"M" },
-      { id:"p4",  name:"Helen Moore",    birth:1938, death:2010, gender:"F" },
-      { id:"p5",  name:"Margaret Smith", birth:1937, death:2015, gender:"F" },
-      { id:"p6",  name:"George Hill",    birth:1935, death:2000, gender:"M" },
-      { id:"p7",  name:"Robert Smith",   birth:1940, death:null, gender:"M" },
-      { id:"p8",  name:"Clara West",     birth:1942, death:null, gender:"F" },
-      // Gen 3 — children of Gen 2 couples + married-in partners
-      { id:"p9",  name:"James Smith",    birth:1962, death:null, gender:"M" },
-      { id:"p10", name:"Laura Chen",     birth:1964, death:null, gender:"F" },
-      { id:"p11", name:"Susan Smith",    birth:1965, death:null, gender:"F" },
-      { id:"p12", name:"David Park",     birth:1963, death:null, gender:"M" },
-      { id:"p13", name:"Anne Hill",      birth:1963, death:null, gender:"F" },
-      { id:"p14", name:"Michael Torres", birth:1961, death:null, gender:"M" },
-      { id:"p15", name:"Peter Hill",     birth:1966, death:null, gender:"M" },
-      { id:"p16", name:"Rachel Adams",   birth:1968, death:null, gender:"F" },
-      { id:"p17", name:"Daniel Smith",   birth:1968, death:null, gender:"M" },
-      { id:"p18", name:"Emma White",     birth:1970, death:null, gender:"F" },
-      { id:"p19", name:"Claire Smith",   birth:1971, death:null, gender:"F" },
-      { id:"p20", name:"Noah Brown",     birth:1969, death:null, gender:"M" },
-      // Gen 4 — children of Gen 3 couples + married-in partners
-      { id:"p21", name:"Oliver Smith",   birth:1990, death:null, gender:"M" },
-      { id:"p22", name:"Sophia Lee",     birth:1992, death:null, gender:"F" },
-      { id:"p23", name:"Lily Smith",     birth:1992, death:null, gender:"F" },
-      { id:"p24", name:"Ethan Clark",    birth:1990, death:null, gender:"M" },
-      { id:"p25", name:"Ryan Torres",    birth:1988, death:null, gender:"M" },
-      { id:"p26", name:"Mia Johnson",    birth:1990, death:null, gender:"F" },
-      { id:"p27", name:"Zoe Hill",       birth:1994, death:null, gender:"F" },
-      { id:"p28", name:"Liam Evans",     birth:1992, death:null, gender:"M" },
-      { id:"p29", name:"Max Smith",      birth:1994, death:null, gender:"M" },
-      { id:"p30", name:"Isla Gray",      birth:1996, death:null, gender:"F" },
-      // Gen 4 solo leaf — child of c6 (Susan + David) who does not marry
-      { id:"p31", name:"Sophie Park",    birth:1993, death:null, gender:"F" },
-      // Gen 5 solo leaves — children of Gen 4 couples
-      { id:"p32", name:"Ben Smith",      birth:2015, death:null, gender:"M" },
-      { id:"p33", name:"Ella Smith",     birth:2017, death:null, gender:"F" },
-      { id:"p34", name:"Finn Clark",     birth:2016, death:null, gender:"M" },
-      { id:"p35", name:"Ava Torres",     birth:2014, death:null, gender:"F" },
-      { id:"p36", name:"Leo Torres",     birth:2016, death:null, gender:"M" },
-      { id:"p37", name:"Grace Hill",     birth:2018, death:null, gender:"F" },
-      { id:"p38", name:"Jack Smith",     birth:2019, death:null, gender:"M" },
-    ];
-
-    const couples = [
-      // Gen 1
-      { id:"c1",  spouseA:"p1",  spouseB:"p2",  children:["p3","p5","p7"]  },
-      // Gen 2
-      { id:"c2",  spouseA:"p3",  spouseB:"p4",  children:["p9","p11"]      },
-      { id:"c3",  spouseA:"p5",  spouseB:"p6",  children:["p13","p15"]     },
-      { id:"c4",  spouseA:"p7",  spouseB:"p8",  children:["p17","p19"]     },
-      // Gen 3
-      { id:"c5",  spouseA:"p9",  spouseB:"p10", children:["p21","p23"]     },
-      { id:"c6",  spouseA:"p11", spouseB:"p12", children:["p31"]           },
-      { id:"c7",  spouseA:"p13", spouseB:"p14", children:["p25"]           },
-      { id:"c8",  spouseA:"p15", spouseB:"p16", children:["p27"]           },
-      { id:"c9",  spouseA:"p17", spouseB:"p18", children:["p29"]           },
-      { id:"c10", spouseA:"p19", spouseB:"p20", children:[]                },
-      // Gen 4
-      { id:"c11", spouseA:"p21", spouseB:"p22", children:["p32","p33"]     },
-      { id:"c12", spouseA:"p23", spouseB:"p24", children:["p34"]           },
-      { id:"c13", spouseA:"p25", spouseB:"p26", children:["p35","p36"]     },
-      { id:"c14", spouseA:"p27", spouseB:"p28", children:["p37"]           },
-      { id:"c15", spouseA:"p29", spouseB:"p30", children:["p38"]           },
-    ];
+    // ===== STATE (populated by init) =====
+    let people  = [];
+    let couples = [];
+    let personMap    = {};
+    let personCouple = {};
 
     // ===== CONSTANTS =====
     const NODE_W      = 120;   // person card width
@@ -104,16 +40,6 @@
       M: { fill:'#1e3a5f', stroke:'#2a5fa0', avatar:'#2a5fa0', years:'#aac8f0' },
       F: { fill:'#3d1f2e', stroke:'#a04a6a', avatar:'#a04a6a', years:'#f0c0d0' },
     };
-
-    // ===== HELPER MAPS =====
-    const personMap = Object.fromEntries(people.map(p => [p.id, p]));
-
-    // personId → the couple where they are spouseA or spouseB
-    const personCouple = {};
-    couples.forEach(c => {
-      personCouple[c.spouseA] = c;
-      personCouple[c.spouseB] = c;
-    });
 
     // ===== LAYOUT PASS 1: GENERATION ASSIGNMENT =====
     function assignGenerations() {
@@ -320,7 +246,13 @@
         const soloIds = couple.children.filter(pid => !personCouple[pid]);
 
         const allChildren = [
-          ...childCouples.map(cc => ({ cx: cc.cx,               y: cc.y    })),
+          ...childCouples.map(cc => {
+            const childIsSpouseA = couple.children.includes(cc.spouseA);
+            const childCardCX = childIsSpouseA
+              ? cc.spouseAX + NODE_W / 2
+              : cc.spouseBX + NODE_W / 2;
+            return { cx: childCardCX, y: cc.y };
+          }),
           ...soloIds.map(pid => {
             const p = personMap[pid];
             return { cx: p.soloCX, y: p.soloY };
@@ -361,57 +293,82 @@
     }
 
     // ===== ZOOM + PAN =====
-    function setupZoom() {
+    let zoom; // stored so re-renders can restore the transform
+
+    function setupZoom(treeW, treeH) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-
-      // Total tree canvas width and height (used for fit-on-load)
-      const treeW = couples[0].subtreeWidth + PADDING * 2;
-      const treeH = 5 * ROW_HEIGHT + PADDING * 2;
-
-      // Fit entire tree both horizontally and vertically on load; otherwise center it
-      const scale    = Math.min(
-        treeW > vw ? vw / treeW : 1,
-        treeH > vh ? vh / treeH : 1
-      );
+      const scale      = Math.min(treeW > vw ? vw / treeW : 1, treeH > vh ? vh / treeH : 1);
       const translateX = (vw - treeW * scale) / 2;
       const translateY = PADDING * scale;
 
-      const initialTransform = d3.zoomIdentity
-        .translate(translateX, translateY)
-        .scale(scale);
+      const initialTransform = d3.zoomIdentity.translate(translateX, translateY).scale(scale);
 
-      const zoom = d3.zoom()
+      zoom = d3.zoom()
         .scaleExtent([0.2, 3])
-        .on('zoom', event => {
-          zoomLayer.attr('transform', event.transform);
-        });
+        .on('zoom', event => { zoomLayer.attr('transform', event.transform); });
 
-      svg
-        .call(zoom)
-        .call(zoom.transform, initialTransform);
+      svg.call(zoom).call(zoom.transform, initialTransform);
     }
 
     // ===== INIT =====
-    (function init() {
-      // Set up SVG layers
-      svg = d3.select('#tree');
-      zoomLayer = svg.append('g').attr('class', 'zoom-layer');
-      connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
-      nodeLayer      = zoomLayer.append('g').attr('class', 'nodes');
+    async function init() {
+      // Save viewport position across re-renders
+      const prevTransform = (svg && zoom) ? d3.zoomTransform(svg.node()) : null;
 
-      // Layout passes (must run in this order)
+      // Fetch tree data
+      const res = await fetch('/api/tree');
+      if (!res.ok) { console.error('Failed to load tree:', res.status); return; }
+      const data = await res.json();
+      people  = data.people;
+      couples = data.couples;
+
+      // Rebuild helper maps from fresh data
+      personMap = Object.fromEntries(people.map(p => [p.id, p]));
+      personCouple = {};
+      couples.forEach(c => { personCouple[c.spouseA] = c; personCouple[c.spouseB] = c; });
+
+      // Set up SVG layers once
+      if (!svg) {
+        svg           = d3.select('#tree');
+        zoomLayer     = svg.append('g').attr('class', 'zoom-layer');
+        connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
+        nodeLayer     = zoomLayer.append('g').attr('class', 'nodes');
+      }
+
+      // Guard: nothing to render if tree is empty (pre-seed or fully cleared)
+      if (couples.length === 0) {
+        if (svg) {
+          connectorLayer.selectAll('*').remove();
+          nodeLayer.selectAll('*').remove();
+        }
+        return;
+      }
+
+      // Layout passes
       assignGenerations();
       computeSubtreeWidths();
       computePositions();
 
-      // Render (connectors first so they appear behind nodes)
+      // Clear and re-render
+      connectorLayer.selectAll('*').remove();
+      nodeLayer.selectAll('*').remove();
       renderConnectors();
       renderNodes();
 
-      // Zoom + pan
-      setupZoom();
-    })();
+      // Zoom: fit on first load, restore on re-render
+      const maxGen = Math.max(...couples.map(c => c.gen));
+      const treeW  = couples[0].subtreeWidth + PADDING * 2;
+      const treeH  = (maxGen + 1) * ROW_HEIGHT + PADDING * 2;
+
+      if (!zoom) {
+        setupZoom(treeW, treeH);
+      } else {
+        svg.call(zoom.transform, prevTransform);
+      }
+    }
+
+    init();
   </script>
 </body>
 </html>

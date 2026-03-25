@@ -166,19 +166,23 @@ Adds a new child to an existing couple. Executes in a single Prisma transaction:
 
 ### `DELETE /api/people/:id`
 
-Removes a person and, if they belong to a couple, dissolves that couple. The remaining spouse (if any) becomes uncoupled: they stay in the database and continue to appear in the tree as a solo leaf if they are a bloodline descendant; married-in spouses who are not bloodline descendants will no longer be reachable in the tree (they have no parent `CoupleChild` link).
+Removes a person and, if they belong to a couple, dissolves that couple. Deletion behaviour is asymmetric based on role:
 
-**Guard:** The deletion is only allowed if the person's couple has no children. If the couple has children, the request is rejected — a parent cannot be removed while descendants exist.
+- **Deleting spouseB (married-in):** The couple is dissolved. spouseA remains in the tree as an uncoupled bloodline node.
+- **Deleting spouseA (bloodline):** spouseB has no parent `CoupleChild` link and would become unreachable in the tree if left behind. spouseB is therefore **automatically deleted in the same transaction**. Both persons are removed.
+
+**Guard:** Deletion is only allowed if the person's couple has no children. If the couple has children, the request is rejected regardless of role — a parent cannot be removed while descendants exist.
 
 **Transaction steps (single Prisma transaction):**
 1. Look up the person; `404` if not found.
 2. Find the couple where `spouseAId = id` OR `spouseBId = id`, if any.
 3. If a couple is found and it has one or more `CoupleChild` rows, return `409`.
-4. If a couple is found and it has no children: delete the `Couple` row. The `onDelete: Cascade` on `CoupleChild` automatically removes any associated `CoupleChild` rows (there are none in this case, but the cascade ensures no FK violation).
-5. Delete the `CoupleChild` row where `childId = id` (removes the person from their parents' couple's children list), if any. **This step must execute before step 6** — deleting the `Person` row while a `CoupleChild.childId` FK still points to it would cause a constraint violation.
-6. Delete the `Person` row.
+4. If the person is `spouseA` of the couple: delete the `CoupleChild` row where `childId = spouseBId`, if any, then delete the `spouseB` Person row. SpouseB may have been a bloodline child of another couple before marrying in (the schema permits this even though the UI does not produce it); this step removes that record to satisfy the FK constraint before the Person row is deleted. Omitting this step would cause a constraint violation at runtime if such a record exists.
+5. Delete the `Couple` row. `onDelete: Cascade` automatically removes its `CoupleChild` rows (zero in this case, but the cascade prevents any FK violation).
+6. Delete the `CoupleChild` row where `childId = id` (removes the target person from their own parent couple's children list), if any. **Must execute before step 7.**
+7. Delete the target `Person` row.
 
-**Response:** `200 { "id": "clx..." }` — the ID of the deleted person. Only the ID is returned (not the full person object) because the client immediately re-fetches `/api/tree` after a successful deletion; the full object is no longer needed.
+**Response:** `200 { "deleted": ["clx..."] }` — array of deleted person IDs. Contains one ID (spouseB or a solo/uncoupled person) or two IDs (spouseA + their spouseB) depending on the case. The client re-fetches `/api/tree` immediately; the array is provided only so the client can confirm what was removed.
 
 **Errors:**
 - `404 { "error": "Person not found" }` if `:id` does not exist.
@@ -219,7 +223,14 @@ A `<div id="ctx-menu">` appended once to `<body>`, hidden by default, shown with
 
 **"Add child" button:** Visible and enabled if the clicked person belongs to a couple (`d.coupleId` is set) — available to both spouseA and spouseB. If the person has no couple yet, shown disabled with tooltip "Add a spouse first."
 
-**"Remove" button:** Always visible. Enabled if the person has no couple OR if their couple has no children (determined client-side from the current tree data). Disabled with tooltip "Cannot remove a person with children" if their couple has children. Clicking an enabled "Remove" button transitions the context menu into a confirmation state ("Are you sure? This cannot be undone. [Confirm] [Cancel]") before issuing the DELETE request.
+**"Remove" button:** Always visible. Enabled if the person has no couple OR if their couple has no children (determined client-side from the current tree data). Disabled with tooltip "Cannot remove a person with children" if their couple has children.
+
+Clicking an enabled "Remove" button transitions the context menu into a confirmation state before issuing the DELETE request. The confirmation message varies by case:
+- Person has no couple: "Remove [name]? This cannot be undone."
+- Person is `spouseB` of a childless couple: "Remove [name]? Their couple will be dissolved. This cannot be undone."
+- Person is `spouseA` of a childless couple: "Remove [name]? This will also remove their spouse [spouseB name]. This cannot be undone."
+
+The frontend determines the person's role by checking whether their ID matches `couple.spouseA` or `couple.spouseB` in the current tree data.
 
 While a DELETE request is in flight, the outside-click dismiss handler is suppressed and the Confirm/Cancel buttons are replaced with a loading indicator. This prevents the menu from being dismissed before the response arrives. On success, dismiss the menu and call `init()`. On error, restore the Confirm/Cancel buttons and show the error text inline.
 

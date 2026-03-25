@@ -147,13 +147,17 @@
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
     }
 
+    function showCtxMenu(event, d) {
+      console.log('clicked', d.person.name, 'coupleId:', d.coupleId);
+    }
+
     function renderNodes() {
       // Build flat list: all coupled people + all solo leaf people
       const nodeData = [];
 
       couples.forEach(couple => {
-        nodeData.push({ person: personMap[couple.spouseA], x: couple.spouseAX, y: couple.y });
-        nodeData.push({ person: personMap[couple.spouseB], x: couple.spouseBX, y: couple.y });
+        nodeData.push({ person: personMap[couple.spouseA], x: couple.spouseAX, y: couple.y, coupleId: couple.id });
+        nodeData.push({ person: personMap[couple.spouseB], x: couple.spouseBX, y: couple.y, coupleId: couple.id });
       });
 
       people
@@ -166,6 +170,11 @@
         .join('g')
         .attr('class', 'person')
         .attr('transform', d => `translate(${d.x},${d.y})`);
+
+      groups.on('click', function(event, d) {
+        event.stopPropagation();
+        showCtxMenu(event, d);
+      });
 
       // Define per-node clip path so content stays within card bounds
       groups.append('clipPath')

@@ -27,9 +27,11 @@ family-tree/
     │   └── seed.js         ← seeds all 38 people + 15 couples
     └── src/
         ├── index.js        ← Express entry point, serves index.html as static
+        ├── lib/
+        │   └── createPerson.js  ← shared person-creation + validation helper
         ├── routes/
         │   ├── tree.js     ← GET /api/tree
-        │   ├── people.js   ← POST /api/people
+        │   ├── people.js   ← DELETE /api/people/:id
         │   └── couples.js  ← POST /api/couples, POST /api/couples/:id/children
         └── middleware/
             └── errorHandler.js
@@ -63,7 +65,7 @@ model Couple {
 }
 
 model CoupleChild {
-  couple    Couple  @relation(fields: [coupleId], references: [id])
+  couple    Couple  @relation(fields: [coupleId], references: [id], onDelete: Cascade)
   coupleId  String
   child     Person  @relation(fields: [childId], references: [id])
   childId   String
@@ -75,9 +77,10 @@ model CoupleChild {
 
 **Key constraints:**
 - `spouseAId` and `spouseBId` are `@unique` — a person belongs to at most one couple.
-- `spouseA` is always the bloodline member; `spouseB` is the married-in partner. This is required by the layout algorithm which drops the parent→child connector to `spouseA`'s card top-centre. This asymmetry is intentional and permanent — `spouseB` people cannot add children through the UI.
+- `spouseA` is always the bloodline member; `spouseB` is the married-in partner. This asymmetry is used only by the layout algorithm (connector drop-line target). **It is enforced by the UI and seed data only — the server does not validate bloodline membership.** Both spouses may add children through the UI — the couple is already established, so either card is a valid trigger.
 - `CoupleChild` composite PK prevents duplicate parent–child links.
 - `sortOrder` preserves sibling insertion order for the layout algorithm.
+- `onDelete: Cascade` on `CoupleChild.couple` means deleting a `Couple` row automatically deletes its `CoupleChild` rows. This is used by `DELETE /api/people/:id` when dissolving a childless couple.
 
 ---
 
@@ -88,6 +91,8 @@ All prefixed `/api`. No authentication. All POST endpoints require `express.json
 ### `GET /api/tree`
 
 Returns the full tree. The route queries all couples with their `CoupleChild` relations (ordered by `sortOrder ASC`) and maps the result to a flat shape the frontend already expects.
+
+The `couples` array is returned sorted so that the **root couple** (the one whose neither spouse appears as a child in any `CoupleChild` row) comes first. This preserves the `couples[0]` assumption in `assignGenerations()`. The simplest server-side approach: after fetching all couples, find the one whose `spouseAId` and `spouseBId` are absent from all `CoupleChild.childId` values, move it to index 0, then return the rest in insertion order.
 
 **Response:**
 ```json
@@ -143,7 +148,7 @@ The `existingPersonId` person always becomes `spouseA`. No `role` field is neede
 
 Adds a new child to an existing couple. Executes in a single Prisma transaction: create the child person, then create the `CoupleChild` row with `sortOrder = (current child count for this couple)`.
 
-**Who calls this:** The frontend, when the user clicks "Add child" on a `spouseA` person. The frontend reads `couple.id` from the `/api/tree` response (cuid strings, not the original `c1`/`c2` keys) and passes it as `:id`.
+**Who calls this:** The frontend, when the user clicks "Add child" on either spouse. The frontend reads `couple.id` from the `/api/tree` response (cuid strings, not the original `c1`/`c2` keys) and passes it as `:id`.
 
 **Body:**
 ```json
@@ -159,6 +164,26 @@ Adds a new child to an existing couple. Executes in a single Prisma transaction:
 - `404 { "error": "Couple not found" }` if `:id` does not exist.
 - `400 { "error": "..." }` for invalid person fields.
 
+### `DELETE /api/people/:id`
+
+Removes a person and, if they belong to a couple, dissolves that couple. The remaining spouse (if any) becomes uncoupled: they stay in the database and continue to appear in the tree as a solo leaf if they are a bloodline descendant; married-in spouses who are not bloodline descendants will no longer be reachable in the tree (they have no parent `CoupleChild` link).
+
+**Guard:** The deletion is only allowed if the person's couple has no children. If the couple has children, the request is rejected — a parent cannot be removed while descendants exist.
+
+**Transaction steps (single Prisma transaction):**
+1. Look up the person; `404` if not found.
+2. Find the couple where `spouseAId = id` OR `spouseBId = id`, if any.
+3. If a couple is found and it has one or more `CoupleChild` rows, return `409`.
+4. If a couple is found and it has no children: delete the `Couple` row. The `onDelete: Cascade` on `CoupleChild` automatically removes any associated `CoupleChild` rows (there are none in this case, but the cascade ensures no FK violation).
+5. Delete the `CoupleChild` row where `childId = id` (removes the person from their parents' couple's children list), if any. **This step must execute before step 6** — deleting the `Person` row while a `CoupleChild.childId` FK still points to it would cause a constraint violation.
+6. Delete the `Person` row.
+
+**Response:** `200 { "id": "clx..." }` — the ID of the deleted person. Only the ID is returned (not the full person object) because the client immediately re-fetches `/api/tree` after a successful deletion; the full object is no longer needed.
+
+**Errors:**
+- `404 { "error": "Person not found" }` if `:id` does not exist.
+- `409 { "error": "Cannot remove a person who has children" }` if their couple has children.
+
 ---
 
 ## Frontend Changes (`index.html`)
@@ -169,12 +194,14 @@ Four focused changes. The layout algorithm and D3 render code are unchanged.
 
 Remove hardcoded `people` and `couples` arrays. Extract the existing IIFE into a named async `init()` function that:
 
-1. Fetches `/api/tree`
-2. Runs `assignGenerations()`, `computeSubtreeWidths()`, `computePositions()` with the fetched data
-3. Clears `connectorLayer` and `nodeLayer` (`.selectAll('*').remove()`)
-4. Re-runs `renderConnectors()` and `renderNodes()`
+1. Fetches `/api/tree` to get `{ people, couples }`.
+2. Rebuilds `personMap` (`id → Person`) and `personCouple` (`personId → Couple`) from the fetched data. These are currently module-level constants computed once from hardcoded arrays; after migration they must be recomputed inside `init()` on every call so they reflect the latest DB state.
+3. Runs `assignGenerations()`, `computeSubtreeWidths()`, `computePositions()`.
+4. Clears `connectorLayer` and `nodeLayer` (`.selectAll('*').remove()`).
+5. Re-runs `renderConnectors()` and `renderNodes()`.
+6. Updates the zoom fit: after `assignGenerations()`, compute `maxGen = Math.max(...couples.map(c => c.gen))` and use `(maxGen + 1) * ROW_HEIGHT + PADDING * 2` as `treeH` rather than the current hardcoded `5 * ROW_HEIGHT + PADDING * 2`. This keeps the fit-on-load calculation correct as the tree grows.
 
-The `svg` and `zoomLayer` elements are created once on page load and never rebuilt. The zoom behaviour and current transform are attached to `svg` and survive re-renders. Before clearing the layers, the current transform is read via `d3.zoomTransform(svg.node())` and reapplied after rendering so the user's viewport position is preserved.
+The `svg` and `zoomLayer` elements are created once on page load and never rebuilt. The zoom behaviour and current transform survive re-renders. Before clearing the layers, save the current transform via `d3.zoomTransform(svg.node())` and reapply it after rendering so the user's viewport position is preserved.
 
 `init()` is called once on page load, then again after every successful mutation.
 
@@ -182,21 +209,25 @@ The `svg` and `zoomLayer` elements are created once on page load and never rebui
 
 Each `<g.person>` receives a `click` listener that calls `event.stopPropagation()` (prevents D3 drag interference) and renders the context menu near the clicked card.
 
-The listener receives the D3 datum `d` which includes `d.person` (the Person object including its `id`) and also a reference to `d.coupleId` — the ID of the couple this person is `spouseA` of, if any. This is populated when building `nodeData` in `renderNodes()`: for each couple, `spouseAId` is stored on the spouseA datum as `coupleId`.
+The listener receives the D3 datum `d` which includes `d.person` (the Person object including its `id`) and `d.coupleId` — the ID of the couple this person belongs to as either spouse, if any. This is populated when building `nodeData` in `renderNodes()`: for each couple, both the spouseA datum and the spouseB datum receive `coupleId = couple.id`.
 
 ### 3. Context menu
 
 A `<div id="ctx-menu">` appended once to `<body>`, hidden by default, shown with `position:fixed` near the click coordinates.
 
-**"Add spouse" button:** Visible and enabled only if the clicked person has no couple (neither `spouseAIn` nor `spouseBIn` is set). This is determined client-side by checking whether the person's ID appears as `spouseA` or `spouseB` in any couple in the current tree data.
+**"Add spouse" button:** Visible and enabled only if the clicked person has no couple. Determined client-side by checking whether the person's ID appears as `spouseA` or `spouseB` in any couple in the current tree data.
 
-**"Add child" button:** Visible and enabled only if the clicked person is `spouseA` of a couple (i.e. `d.coupleId` is set). If the person has no couple yet, the button is shown disabled with tooltip text "Add a spouse first." If the person is `spouseB`, the button is hidden entirely — this asymmetry is intentional (only bloodline `spouseA` members can add children).
+**"Add child" button:** Visible and enabled if the clicked person belongs to a couple (`d.coupleId` is set) — available to both spouseA and spouseB. If the person has no couple yet, shown disabled with tooltip "Add a spouse first."
 
-Clicking outside the menu (document click listener) dismisses it.
+**"Remove" button:** Always visible. Enabled if the person has no couple OR if their couple has no children (determined client-side from the current tree data). Disabled with tooltip "Cannot remove a person with children" if their couple has children. Clicking an enabled "Remove" button transitions the context menu into a confirmation state ("Are you sure? This cannot be undone. [Confirm] [Cancel]") before issuing the DELETE request.
+
+While a DELETE request is in flight, the outside-click dismiss handler is suppressed and the Confirm/Cancel buttons are replaced with a loading indicator. This prevents the menu from being dismissed before the response arrives. On success, dismiss the menu and call `init()`. On error, restore the Confirm/Cancel buttons and show the error text inline.
+
+Clicking outside the menu (document click listener) dismisses it, except while a request is in flight.
 
 ### 4. Modal form
 
-A `<div id="modal">` appended once to `<body>`. Title changes to "Add Spouse" or "Add Child" depending on context. Fields:
+A `<div id="modal">` appended once to `<body>`. Title changes to "Add Spouse" or "Add Child" depending on context (no modal for Remove — confirmation lives inline in the context menu). Fields:
 
 | Field | Type | Validation |
 |-------|------|------------|
@@ -207,6 +238,8 @@ A `<div id="modal">` appended once to `<body>`. Title changes to "Add Spouse" or
 
 On submit: POST to the appropriate endpoint. On success: close modal, call `init()` to re-fetch and re-render. On error (`4xx`/`5xx`): show the `error` field from the response body as an inline message inside the modal, leave it open.
 
+On Remove confirm: `DELETE /api/people/:id`. On success: dismiss context menu, call `init()`. On error: show error text inside the context menu confirmation area.
+
 No new JS libraries. Menu and modal are plain HTML + inline styles consistent with the existing dark theme (`#0f1117` background, `#ffffff` text, blue/rose accents).
 
 ---
@@ -216,10 +249,10 @@ No new JS libraries. Menu and modal are plain HTML + inline styles consistent wi
 Translates the current hardcoded arrays verbatim into Prisma writes. The script is **idempotent**: it runs `deleteMany` on `CoupleChild`, `Couple`, and `Person` (in that order, to respect FK constraints) before inserting, so it can be re-run safely.
 
 Steps:
-1. Delete all `CoupleChild`, then `Couple`, then `Person` rows.
-2. Insert all 38 people via `prisma.person.createMany`. Capture the mapping of original keys (`p1`…`p38`) to generated cuid IDs by creating each person individually and building a `{ p1: "<cuid>", ... }` map.
-3. Insert all 15 couples via `prisma.couple.create`, looking up spouse IDs via the map.
-4. Insert all `CoupleChild` rows, assigning `sortOrder` by each child's index in the original `children` array.
+1. Delete all `CoupleChild`, then `Couple`, then `Person` rows (FK-safe deletion order).
+2. Insert all 38 people one at a time using `prisma.person.create` (not `createMany` — `createMany` does not return created IDs in PostgreSQL without Prisma 5.14+ `createManyAndReturn`). Build a `{ p1: "<cuid>", p2: "<cuid>", ... }` mapping as each person is created.
+3. Insert all 15 couples via `prisma.couple.create`, resolving `spouseAId` and `spouseBId` from the mapping.
+4. Insert all `CoupleChild` rows via `prisma.coupleChild.create`, assigning `sortOrder` equal to each child's index within the original `children` array.
 
 Run with `npx prisma db seed`.
 
@@ -251,12 +284,14 @@ DATABASE_URL="postgresql://user:password@localhost:5432/family_tree"
 PORT=3000
 ```
 
+`index.js` uses `process.env.PORT || 3000` so the server starts even if `PORT` is absent from `.env`.
+
 ---
 
 ## Out of Scope
 
 - Authentication / authorisation
-- Editing or deleting existing nodes
+- Editing existing person details (name, birth year, etc.)
 - Remarriage (a person in an existing couple cannot be given a second spouse)
 - Real-time multi-user sync
-- `spouseB`-initiated child additions
+- Removing a person who has children (must remove descendants first)

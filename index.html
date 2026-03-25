@@ -538,9 +538,11 @@
         // Drop from couple midpoint down to midY
         lines.push({ x1: couple.cx, y1: yBot,  x2: couple.cx, y2: midY });
 
-        // Horizontal bar across all children (only when >1 child)
+        // Horizontal bar: across all children when >1, or elbow when single child is offset
         if (allChildren.length > 1) {
           lines.push({ x1: minCX, y1: midY, x2: maxCX, y2: midY });
+        } else if (allChildren.length === 1 && Math.abs(allChildren[0].cx - couple.cx) > 0.5) {
+          lines.push({ x1: couple.cx, y1: midY, x2: allChildren[0].cx, y2: midY });
         }
 
         // Vertical drops from bar to each child top

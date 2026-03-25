@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Person {
+  id        String        @id @default(cuid())
+  name      String
+  birth     Int
+  death     Int?
+  gender    String
+  spouseAIn Couple?       @relation("SpouseA")
+  spouseBIn Couple?       @relation("SpouseB")
+  childIn   CoupleChild[]
+}
+
+model Couple {
+  id        String        @id @default(cuid())
+  spouseA   Person        @relation("SpouseA", fields: [spouseAId], references: [id])
+  spouseAId String        @unique
+  spouseB   Person        @relation("SpouseB", fields: [spouseBId], references: [id])
+  spouseBId String        @unique
+  children  CoupleChild[]
+}
+
+model CoupleChild {
+  couple    Couple  @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId  String
+  child     Person  @relation(fields: [childId], references: [id])
+  childId   String
+  sortOrder Int     @default(0)
+
+  @@id([coupleId, childId])
+}

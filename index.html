@@ -15,11 +15,39 @@
       color: #666; font: 12px/1 system-ui, sans-serif;
       pointer-events: none; user-select: none;
     }
+    #ctx-menu {
+      display: none; position: fixed; z-index: 100;
+      background: #1a1d27; border: 1px solid #333; border-radius: 8px;
+      padding: 6px 0; min-width: 180px;
+      font: 13px/1 system-ui, sans-serif; color: #fff;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+    #ctx-menu button {
+      display: block; width: 100%; padding: 8px 16px; border: none;
+      background: none; color: #fff; text-align: left; cursor: pointer;
+      font: inherit;
+    }
+    #ctx-menu button:hover:not(:disabled) { background: #2a2d3a; }
+    #ctx-menu button:disabled { color: #555; cursor: default; }
+    #ctx-menu .ctx-sep { border-top: 1px solid #333; margin: 4px 0; }
+    #ctx-menu .ctx-confirm { padding: 10px 16px; font-size: 12px; color: #ccc; }
+    #ctx-menu .ctx-confirm button { display: inline; width: auto; padding: 4px 10px;
+      margin-top: 8px; margin-right: 6px; border-radius: 4px; }
+    #ctx-menu .ctx-confirm .btn-danger { background: #7a1e1e; color: #fff; }
+    #ctx-menu .ctx-confirm .btn-cancel { background: #333; color: #fff; }
+    #ctx-menu .ctx-error { padding: 6px 16px; color: #f08080; font-size: 11px; }
   </style>
 </head>
 <body>
   <svg id="tree"></svg>
   <div id="hint">Scroll to zoom · Drag to pan</div>
+  <div id="ctx-menu">
+    <button id="ctx-add-spouse">Add Spouse</button>
+    <button id="ctx-add-child">Add Child</button>
+    <div class="ctx-sep"></div>
+    <button id="ctx-remove">Remove</button>
+    <div id="ctx-confirm-area"></div>
+  </div>
   <script>
     // ===== STATE (populated by init) =====
     let people  = [];
@@ -147,9 +175,111 @@
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
     }
 
-    function showCtxMenu(event, d) {
-      console.log('clicked', d.person.name, 'coupleId:', d.coupleId);
+    // ===== CONTEXT MENU =====
+    let ctxTarget = null; // { person, coupleId }
+    let ctxInflight = false;
+
+    const ctxMenu        = document.getElementById('ctx-menu');
+    const ctxAddSpouse   = document.getElementById('ctx-add-spouse');
+    const ctxAddChild    = document.getElementById('ctx-add-child');
+    const ctxRemove      = document.getElementById('ctx-remove');
+    const ctxConfirmArea = document.getElementById('ctx-confirm-area');
+
+    function hideCtxMenu() {
+      if (ctxInflight) return;
+      ctxMenu.style.display = 'none';
+      ctxConfirmArea.innerHTML = '';
+      ctxTarget = null;
     }
+
+    document.addEventListener('click', hideCtxMenu);
+    ctxMenu.addEventListener('click', e => e.stopPropagation());
+
+    function showCtxMenu(event, d) {
+      ctxTarget = d;
+      ctxConfirmArea.innerHTML = '';
+
+      // Determine state
+      const personId = d.person.id;
+      const myCouple = couples.find(c => c.spouseA === personId || c.spouseB === personId);
+      const hasCouple = !!myCouple;
+      const hasChildren = hasCouple && myCouple.children.length > 0;
+      const isSpouseA = hasCouple && myCouple.spouseA === personId;
+
+      // Add Spouse — only if no couple
+      ctxAddSpouse.disabled = hasCouple;
+      ctxAddSpouse.title = hasCouple ? 'Already has a spouse' : '';
+
+      // Add Child — only if in a couple
+      ctxAddChild.disabled = !hasCouple;
+      ctxAddChild.title = !hasCouple ? 'Add a spouse first' : '';
+
+      // Remove — disabled if couple has children
+      ctxRemove.disabled = hasChildren;
+      ctxRemove.title = hasChildren ? 'Cannot remove a person with children' : '';
+
+      // Position menu
+      const x = Math.min(event.clientX, window.innerWidth  - 200);
+      const y = Math.min(event.clientY, window.innerHeight - 160);
+      ctxMenu.style.left    = x + 'px';
+      ctxMenu.style.top     = y + 'px';
+      ctxMenu.style.display = 'block';
+    }
+
+    ctxAddSpouse.addEventListener('click', () => {
+      if (!ctxTarget) return;
+      openModal('spouse', ctxTarget);
+      hideCtxMenu();
+    });
+
+    ctxAddChild.addEventListener('click', () => {
+      if (!ctxTarget) return;
+      openModal('child', ctxTarget);
+      hideCtxMenu();
+    });
+
+    ctxRemove.addEventListener('click', () => {
+      if (!ctxTarget || ctxRemove.disabled) return;
+      const d = ctxTarget;
+      const personId = d.person.id;
+      const myCouple = couples.find(c => c.spouseA === personId || c.spouseB === personId);
+      const isSpouseA = myCouple && myCouple.spouseA === personId;
+      const spouseBName = isSpouseA ? personMap[myCouple.spouseB]?.name : null;
+
+      let msg = `Remove ${d.person.name}?`;
+      if (isSpouseA && spouseBName) msg += ` This will also remove their spouse ${spouseBName}.`;
+      else if (myCouple) msg += ` Their couple will be dissolved.`;
+      msg += ' This cannot be undone.';
+
+      ctxConfirmArea.innerHTML = `
+        <div class="ctx-confirm">
+          <div>${msg}</div>
+          <button class="btn-danger" id="ctx-confirm-yes">Confirm</button>
+          <button class="btn-cancel" id="ctx-confirm-no">Cancel</button>
+        </div>`;
+
+      document.getElementById('ctx-confirm-no').addEventListener('click', hideCtxMenu);
+      document.getElementById('ctx-confirm-yes').addEventListener('click', async () => {
+        ctxInflight = true;
+        ctxConfirmArea.innerHTML = '<div class="ctx-confirm">Removing…</div>';
+        try {
+          const res = await fetch(`/api/people/${personId}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || 'Request failed');
+          ctxInflight = false;
+          hideCtxMenu();
+          await init();
+        } catch (err) {
+          ctxInflight = false;
+          ctxConfirmArea.innerHTML = `
+            <div class="ctx-confirm">
+              <div class="ctx-error">${err.message}</div>
+              <button class="btn-cancel" id="ctx-confirm-no">Close</button>
+            </div>`;
+          document.getElementById('ctx-confirm-no').addEventListener('click', hideCtxMenu);
+        }
+      });
+    });
 
     function renderNodes() {
       // Build flat list: all coupled people + all solo leaf people

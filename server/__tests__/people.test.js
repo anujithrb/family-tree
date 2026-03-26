@@ -89,3 +89,88 @@ test('returns 404 for unknown id', async () => {
   const res = await request(app).delete('/api/people/does-not-exist');
   expect(res.status).toBe(404);
 });
+
+// ===== PUT /api/people/:id =====
+
+describe('PUT /api/people/:id', () => {
+  let person;
+
+  beforeEach(async () => {
+    person = await prisma.person.create({
+      data: { name: 'Alice', birth: 1980, gender: 'F' },
+    });
+  });
+
+  test('updates text fields', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice Updated')
+      .field('birth', '1981')
+      .field('death', '2050')
+      .field('gender', 'F');
+
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Alice Updated');
+    expect(res.body.birth).toBe(1981);
+    expect(res.body.death).toBe(2050);
+    expect(res.body.gender).toBe('F');
+
+    const db = await prisma.person.findUnique({ where: { id: person.id } });
+    expect(db.name).toBe('Alice Updated');
+    expect(db.birth).toBe(1981);
+  });
+
+  test('clears death year when empty string provided', async () => {
+    await prisma.person.update({ where: { id: person.id }, data: { death: 2050 } });
+
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('death', '')
+      .field('gender', 'F');
+
+    expect(res.status).toBe(200);
+    expect(res.body.death).toBeNull();
+  });
+
+  test('returns 404 for unknown id', async () => {
+    const res = await request(app)
+      .put('/api/people/does-not-exist')
+      .field('name', 'X')
+      .field('birth', '1990')
+      .field('gender', 'M');
+
+    expect(res.status).toBe(404);
+  });
+
+  test('returns 400 when name is missing', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('birth', '1980')
+      .field('gender', 'F');
+
+    expect(res.status).toBe(400);
+  });
+
+  test('returns 400 for invalid birth year', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '999')
+      .field('gender', 'F');
+
+    expect(res.status).toBe(400);
+  });
+
+  test('returns 400 when death year is before birth year', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('death', '1950')
+      .field('gender', 'F');
+
+    expect(res.status).toBe(400);
+  });
+});

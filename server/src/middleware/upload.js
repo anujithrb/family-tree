@@ -1,6 +1,6 @@
 const multer = require('multer');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const fs = require('fs');
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
     const ext = MIME_TO_EXT[file.mimetype]; // always defined: fileFilter already validated
-    cb(null, uuidv4() + ext);
+    cb(null, randomUUID() + ext);
   },
 });
 

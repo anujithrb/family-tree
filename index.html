@@ -395,6 +395,15 @@
     function updatePhotoPreview() {
       const preview    = document.getElementById('modal-photo-preview');
       const removeLink = document.getElementById('modal-photo-remove');
+
+      // Revoke any existing blob URL before replacing the preview
+      const existingImg = preview.querySelector('img');
+      if (existingImg && existingImg.src.startsWith('blob:')) {
+        URL.revokeObjectURL(existingImg.src);
+      }
+
+      if (!modalContext) return;
+
       const p          = modalContext && modalContext.target && modalContext.target.person;
 
       preview.innerHTML = '';
@@ -460,6 +469,13 @@
     }
 
     function closeModal() {
+      // Revoke blob URL from photo preview if present
+      const preview = document.getElementById('modal-photo-preview');
+      const existingImg = preview && preview.querySelector('img');
+      if (existingImg && existingImg.src.startsWith('blob:')) {
+        URL.revokeObjectURL(existingImg.src);
+      }
+
       modalOverlay.classList.remove('open');
       modalContext       = null;
       selectedFile       = null;
@@ -471,6 +487,12 @@
 
     document.getElementById('modal-photo-input').addEventListener('change', function () {
       if (this.files[0]) {
+        if (this.files[0].size > 2 * 1024 * 1024) {
+          modalError.textContent = 'Photo must be 2 MB or smaller.';
+          this.value = '';
+          return;
+        }
+        modalError.textContent = '';
         selectedFile = this.files[0];
         pendingRemovePhoto = false;
         updatePhotoPreview();

@@ -5,6 +5,7 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes mounted here in later tasks
 app.use('/api', require('./routes/tree'));

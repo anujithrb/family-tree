@@ -4,7 +4,12 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+try {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+} catch (err) {
+  console.error('Failed to create uploads directory:', err.message);
+  throw err;
+}
 
 // Extension is derived from the validated MIME type — never from the client filename
 const MIME_TO_EXT = {
@@ -17,7 +22,7 @@ const MIME_TO_EXT = {
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
-    const ext = MIME_TO_EXT[file.mimetype] || '.jpg';
+    const ext = MIME_TO_EXT[file.mimetype]; // always defined: fileFilter already validated
     cb(null, uuidv4() + ext);
   },
 });

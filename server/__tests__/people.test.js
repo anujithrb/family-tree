@@ -253,6 +253,10 @@ describe('PUT /api/people/:id', () => {
     const uploadsDir = path.join(__dirname, '../uploads');
     const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
     expect(files).toHaveLength(0);
+
+    // DB-level check
+    const db = await prisma.person.findUnique({ where: { id: person.id } });
+    expect(db.profilePicture).toBeNull();
   });
 
   test('returns 400 and writes no file for disallowed MIME type', async () => {
@@ -271,7 +275,7 @@ describe('PUT /api/people/:id', () => {
     expect(files).toHaveLength(0);
   });
 
-  test('returns 400 for file exceeding 2 MB', async () => {
+  test('returns 413 for file exceeding 2 MB', async () => {
     const oversized = Buffer.alloc(2 * 1024 * 1024 + 1);
     const res = await request(app)
       .put(`/api/people/${person.id}`)
@@ -280,7 +284,7 @@ describe('PUT /api/people/:id', () => {
       .field('gender', 'F')
       .attach('profilePicture', oversized, { filename: 'big.jpg', contentType: 'image/jpeg' });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
   });
 });
 
@@ -291,5 +295,5 @@ test('GET /api/tree includes profilePicture in person objects', async () => {
 
   const res = await request(app).get('/api/tree');
   expect(res.status).toBe(200);
-  expect(res.body.people[0]).toHaveProperty('profilePicture');
+  expect(res.body.people.every(p => 'profilePicture' in p)).toBe(true);
 });

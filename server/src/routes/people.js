@@ -58,9 +58,6 @@ router.delete('/:id', async (req, res, next) => {
 router.put('/:id', (req, res, next) => {
   upload.single('profilePicture')(req, res, async (uploadErr) => {
     if (uploadErr) {
-      if (uploadErr.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File too large. Maximum size is 2 MB.' });
-      }
       if (uploadErr.status === 400) {
         return res.status(400).json({ error: uploadErr.message });
       }

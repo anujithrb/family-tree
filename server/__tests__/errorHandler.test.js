@@ -42,6 +42,7 @@ test('maps MulterError LIMIT_FILE_SIZE to 413', () => {
   const res = makeRes();
   errorHandler(err, {}, res, jest.fn());
   expect(res.status).toHaveBeenCalledWith(413);
+  expect(res.json).toHaveBeenCalledWith({ error: expect.any(String) });
 });
 
 test('maps other MulterError codes to 400', () => {
@@ -49,4 +50,5 @@ test('maps other MulterError codes to 400', () => {
   const res = makeRes();
   errorHandler(err, {}, res, jest.fn());
   expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: expect.any(String) });
 });

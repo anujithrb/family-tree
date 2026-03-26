@@ -95,13 +95,12 @@ router.put('/:id', (req, res, next) => {
         : null;
 
       let profilePicture = existing.profilePicture;
+      const oldProfilePicture = existing.profilePicture; // capture before any changes
 
       if (removePhoto === 'true') {
         // removePhoto wins — ignore any uploaded file, delete old photo
-        cleanup();
-        const old = absPath(existing.profilePicture);
-        if (old && fs.existsSync(old)) fs.unlinkSync(old);
-        profilePicture = null;
+        cleanup(); // discard any uploaded file
+        profilePicture = null; // set in memory only — DB update happens below
       } else if (req.file) {
         // New photo: multer already wrote the file — update DB, then delete old
         const newRelPath = `/uploads/${req.file.filename}`;
@@ -126,6 +125,13 @@ router.put('/:id', (req, res, next) => {
         where: { id },
         data: { name: name.trim(), birth, death, gender, profilePicture },
       });
+
+      // Delete old file AFTER DB commit succeeds (safe for removePhoto)
+      if (removePhoto === 'true' && oldProfilePicture) {
+        const old = absPath(oldProfilePicture);
+        if (old && fs.existsSync(old)) fs.unlinkSync(old);
+      }
+
       res.json(updated);
     } catch (err) {
       next(err);

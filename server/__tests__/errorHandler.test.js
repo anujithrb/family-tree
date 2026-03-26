@@ -1,3 +1,4 @@
+const multer = require('multer');
 const errorHandler = require('../src/middleware/errorHandler');
 
 function makeRes() {
@@ -34,4 +35,18 @@ test('maps unknown errors to 500', () => {
   const res = makeRes();
   errorHandler(err, {}, res, jest.fn());
   expect(res.status).toHaveBeenCalledWith(500);
+});
+
+test('maps MulterError LIMIT_FILE_SIZE to 413', () => {
+  const err = new multer.MulterError('LIMIT_FILE_SIZE');
+  const res = makeRes();
+  errorHandler(err, {}, res, jest.fn());
+  expect(res.status).toHaveBeenCalledWith(413);
+});
+
+test('maps other MulterError codes to 400', () => {
+  const err = new multer.MulterError('LIMIT_UNEXPECTED_FILE');
+  const res = makeRes();
+  errorHandler(err, {}, res, jest.fn());
+  expect(res.status).toHaveBeenCalledWith(400);
 });

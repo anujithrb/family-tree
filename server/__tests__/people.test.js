@@ -1,6 +1,8 @@
 const request = require('supertest');
 const app = require('../src/index');
 const { prisma, clearDatabase } = require('./helpers');
+const path = require('path');
+const fs   = require('fs');
 
 beforeEach(clearDatabase);
 afterAll(() => prisma.$disconnect());
@@ -173,4 +175,121 @@ describe('PUT /api/people/:id', () => {
 
     expect(res.status).toBe(400);
   });
+
+  // --- Photo upload tests ---
+  // A known-valid 1×1 PNG (67 bytes) encoded as base64
+  const TINY_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==',
+    'base64'
+  );
+
+  afterEach(() => {
+    // Clean up any files created in server/uploads/ during tests
+    const uploadsDir = path.join(__dirname, '../uploads');
+    if (fs.existsSync(uploadsDir)) {
+      fs.readdirSync(uploadsDir).forEach(f => {
+        try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) {}
+      });
+    }
+  });
+
+  test('uploads a photo and sets profilePicture on the person', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .attach('profilePicture', TINY_PNG, { filename: 'photo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.profilePicture).toMatch(/^\/uploads\/.+\.png$/);
+
+    // File exists on disk
+    const filename = path.basename(res.body.profilePicture);
+    const filePath = path.join(__dirname, '../uploads', filename);
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+
+  test('removePhoto=true clears profilePicture and deletes the file', async () => {
+    // First upload a photo
+    const uploadRes = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .attach('profilePicture', TINY_PNG, { filename: 'photo.png', contentType: 'image/png' });
+    expect(uploadRes.status).toBe(200);
+
+    const filename = path.basename(uploadRes.body.profilePicture);
+    const filePath = path.join(__dirname, '../uploads', filename);
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    // Now remove it
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .field('removePhoto', 'true');
+
+    expect(res.status).toBe(200);
+    expect(res.body.profilePicture).toBeNull();
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  test('removePhoto=true wins when a file is also sent', async () => {
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .field('removePhoto', 'true')
+      .attach('profilePicture', TINY_PNG, { filename: 'photo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.profilePicture).toBeNull();
+
+    // Uploaded file was not kept on disk
+    const uploadsDir = path.join(__dirname, '../uploads');
+    const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
+    expect(files).toHaveLength(0);
+  });
+
+  test('returns 400 and writes no file for disallowed MIME type', async () => {
+    const pdfBuffer = Buffer.from('%PDF-1.4 fake pdf content');
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .attach('profilePicture', pdfBuffer, { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(400);
+
+    const uploadsDir = path.join(__dirname, '../uploads');
+    const files = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
+    expect(files).toHaveLength(0);
+  });
+
+  test('returns 400 for file exceeding 2 MB', async () => {
+    const oversized = Buffer.alloc(2 * 1024 * 1024 + 1);
+    const res = await request(app)
+      .put(`/api/people/${person.id}`)
+      .field('name', 'Alice')
+      .field('birth', '1980')
+      .field('gender', 'F')
+      .attach('profilePicture', oversized, { filename: 'big.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+test('GET /api/tree includes profilePicture in person objects', async () => {
+  const p1 = await prisma.person.create({ data: { name: 'A', birth: 1900, gender: 'M' } });
+  const p2 = await prisma.person.create({ data: { name: 'B', birth: 1902, gender: 'F' } });
+  await prisma.couple.create({ data: { spouseAId: p1.id, spouseBId: p2.id } });
+
+  const res = await request(app).get('/api/tree');
+  expect(res.status).toBe(200);
+  expect(res.body.people[0]).toHaveProperty('profilePicture');
 });

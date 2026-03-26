@@ -92,6 +92,26 @@ test('returns 404 for unknown id', async () => {
   expect(res.status).toBe(404);
 });
 
+test('deletes the profile picture file when person is removed', async () => {
+  const person = await prisma.person.create({ data: { name: 'Picasso', birth: 1970, gender: 'M' } });
+
+  // Give the person a fake profile picture
+  const filename = 'test-pic.png';
+  const uploadsDir = path.join(__dirname, '../uploads');
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  const filePath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filePath, 'fake image data');
+
+  await prisma.person.update({
+    where: { id: person.id },
+    data: { profilePicture: `/uploads/${filename}` },
+  });
+
+  const res = await request(app).delete(`/api/people/${person.id}`);
+  expect(res.status).toBe(200);
+  expect(fs.existsSync(filePath)).toBe(false);
+});
+
 // ===== PUT /api/people/:id =====
 
 describe('PUT /api/people/:id', () => {

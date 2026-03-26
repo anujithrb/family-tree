@@ -22,6 +22,12 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(409).json({ error: 'Cannot remove a person who has children' });
     }
 
+    // Capture spouseB record before the transaction deletes it
+    let spouseB = null;
+    if (couple && couple.spouseAId === id) {
+      spouseB = await prisma.person.findUnique({ where: { id: couple.spouseBId } });
+    }
+
     const deleted = [id];
 
     await prisma.$transaction(async tx => {
@@ -48,6 +54,15 @@ router.delete('/:id', async (req, res, next) => {
       }
       await tx.person.delete({ where: { id } });
     });
+
+    // Delete profile picture files after the DB transaction succeeds
+    const deletePhoto = (profilePicture) => {
+      if (!profilePicture) return;
+      const filePath = path.join(__dirname, '../../uploads', path.basename(profilePicture));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    };
+    deletePhoto(person.profilePicture);
+    if (spouseB) deletePhoto(spouseB.profilePicture);
 
     res.json({ deleted });
   } catch (err) {

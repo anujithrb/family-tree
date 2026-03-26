@@ -8,14 +8,15 @@ datasource db {
 }
 
 model Person {
-  id        String        @id @default(cuid())
-  name      String
-  birth     Int
-  death     Int?
-  gender    String
-  spouseAIn Couple?       @relation("SpouseA")
-  spouseBIn Couple?       @relation("SpouseB")
-  childIn   CoupleChild[]
+  id             String        @id @default(cuid())
+  name           String
+  birth          Int
+  death          Int?
+  gender         String
+  profilePicture String?
+  spouseAIn      Couple?       @relation("SpouseA")
+  spouseBIn      Couple?       @relation("SpouseB")
+  childIn        CoupleChild[]
 }
 
 model Couple {

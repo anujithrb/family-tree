@@ -388,15 +388,72 @@
     const modalDeath   = document.getElementById('modal-death');
     const modalError   = document.getElementById('modal-error');
     const modalSubmit  = document.getElementById('modal-submit');
-    let modalContext   = null; // { mode: 'spouse'|'child', target: d }
+    let modalContext     = null; // { mode: 'spouse'|'child'|'edit', target: d }
+    let selectedFile     = null;   // File object chosen by the user, not yet uploaded
+    let pendingRemovePhoto = false; // true when user has clicked "Remove photo"
+
+    function updatePhotoPreview() {
+      const preview    = document.getElementById('modal-photo-preview');
+      const removeLink = document.getElementById('modal-photo-remove');
+      const p          = modalContext && modalContext.target && modalContext.target.person;
+
+      preview.innerHTML = '';
+      preview.style.background = '';
+
+      if (selectedFile) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(selectedFile);
+        preview.appendChild(img);
+        removeLink.style.display = 'block';
+      } else if (p && p.profilePicture && !pendingRemovePhoto) {
+        const img = document.createElement('img');
+        img.src = p.profilePicture;
+        preview.appendChild(img);
+        removeLink.style.display = 'block';
+      } else if (p) {
+        preview.textContent = p.name[0];
+        preview.style.background = C[p.gender].avatar;
+        removeLink.style.display = 'none';
+      }
+    }
+
+    function handleRemovePhoto() {
+      pendingRemovePhoto = true;
+      selectedFile = null;
+      document.getElementById('modal-photo-input').value = '';
+      updatePhotoPreview();
+    }
 
     function openModal(mode, d) {
-      modalContext = { mode, target: d };
-      modalTitle.textContent = mode === 'spouse' ? 'Add Spouse' : 'Add Child';
-      modalName.value  = '';
-      modalBirth.value = '';
-      modalDeath.value = '';
-      document.querySelectorAll('input[name="modal-gender"]').forEach(r => r.checked = false);
+      modalContext     = { mode, target: d };
+      selectedFile     = null;
+      pendingRemovePhoto = false;
+
+      const photoSection = document.getElementById('modal-photo-section');
+      const submitBtn    = document.getElementById('modal-submit');
+
+      if (mode === 'edit') {
+        const p = d.person;
+        modalTitle.textContent   = 'Edit Person';
+        submitBtn.textContent    = 'Save';
+        modalName.value          = p.name;
+        modalBirth.value         = p.birth;
+        modalDeath.value         = p.death || '';
+        document.querySelectorAll('input[name="modal-gender"]').forEach(r => {
+          r.checked = r.value === p.gender;
+        });
+        photoSection.style.display = 'block';
+        updatePhotoPreview();
+      } else {
+        modalTitle.textContent   = mode === 'spouse' ? 'Add Spouse' : 'Add Child';
+        submitBtn.textContent    = 'Add';
+        modalName.value          = '';
+        modalBirth.value         = '';
+        modalDeath.value         = '';
+        document.querySelectorAll('input[name="modal-gender"]').forEach(r => r.checked = false);
+        photoSection.style.display = 'none';
+      }
+
       modalError.textContent = '';
       modalOverlay.classList.add('open');
       modalName.focus();
@@ -404,11 +461,21 @@
 
     function closeModal() {
       modalOverlay.classList.remove('open');
-      modalContext = null;
+      modalContext       = null;
+      selectedFile       = null;
+      pendingRemovePhoto = false;
     }
 
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
     modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+
+    document.getElementById('modal-photo-input').addEventListener('change', function () {
+      if (this.files[0]) {
+        selectedFile = this.files[0];
+        pendingRemovePhoto = false;
+        updatePhotoPreview();
+      }
+    });
 
     modalSubmit.addEventListener('click', async () => {
       if (!modalContext) return;
@@ -431,7 +498,19 @@
       try {
         modalSubmit.disabled = true;
         let res;
-        if (mode === 'spouse') {
+        if (mode === 'edit') {
+          const fd = new FormData();
+          fd.append('name', name);
+          fd.append('birth', String(birth));
+          if (death !== null) fd.append('death', String(death));
+          fd.append('gender', gender);
+          if (pendingRemovePhoto) {
+            fd.append('removePhoto', 'true');
+          } else if (selectedFile) {
+            fd.append('profilePicture', selectedFile);
+          }
+          res = await fetch(`/api/people/${target.person.id}`, { method: 'PUT', body: fd });
+        } else if (mode === 'spouse') {
           res = await fetch('/api/couples', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

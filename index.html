@@ -68,6 +68,7 @@
   <svg id="tree"></svg>
   <div id="hint">Scroll to zoom · Drag to pan</div>
   <div id="ctx-menu">
+    <button id="ctx-edit">Edit</button>
     <button id="ctx-add-spouse">Add Spouse</button>
     <button id="ctx-add-child">Add Child</button>
     <div class="ctx-sep"></div>
@@ -241,6 +242,7 @@
     let ctxInflight = false;
 
     const ctxMenu        = document.getElementById('ctx-menu');
+    const ctxEdit        = document.getElementById('ctx-edit');
     const ctxAddSpouse   = document.getElementById('ctx-add-spouse');
     const ctxAddChild    = document.getElementById('ctx-add-child');
     const ctxRemove      = document.getElementById('ctx-remove');
@@ -281,7 +283,7 @@
 
       // Position menu
       const x = Math.min(event.clientX, window.innerWidth  - 200);
-      const y = Math.min(event.clientY, window.innerHeight - 160);
+      const y = Math.min(event.clientY, window.innerHeight - 200);
       ctxMenu.style.left    = x + 'px';
       ctxMenu.style.top     = y + 'px';
       ctxMenu.style.display = 'block';
@@ -290,6 +292,12 @@
     ctxAddSpouse.addEventListener('click', () => {
       if (!ctxTarget) return;
       openModal('spouse', ctxTarget);
+      hideCtxMenu();
+    });
+
+    ctxEdit.addEventListener('click', () => {
+      if (!ctxTarget) return;
+      openModal('edit', ctxTarget);
       hideCtxMenu();
     });
 

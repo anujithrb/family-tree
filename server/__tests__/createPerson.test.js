@@ -22,9 +22,9 @@ test('throws 400 for blank name', async () => {
     .rejects.toMatchObject({ status: 400 });
 });
 
-test('throws 400 for missing birth', async () => {
-  await expect(createPerson({ name: 'Alice', gender: 'F' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
+test('allows missing birth year', async () => {
+  const p = await createPerson({ name: 'Alice', gender: 'F' }, prisma);
+  expect(p.birth).toBeNull();
 });
 
 test('throws 400 for birth below 1000', async () => {

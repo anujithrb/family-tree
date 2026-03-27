@@ -83,7 +83,7 @@ router.put('/:id', (req, res, next) => {
       const { id } = req.params;
       const { name, birth: birthStr, death: deathStr, gender, removePhoto } = req.body;
 
-      const birth = parseInt(birthStr, 10);
+      const birth = birthStr && birthStr !== '' ? parseInt(birthStr, 10) : null;
       const death = deathStr && deathStr !== '' ? parseInt(deathStr, 10) : null;
 
       // Helper: clean up any freshly uploaded file if we can't proceed
@@ -91,9 +91,11 @@ router.put('/:id', (req, res, next) => {
 
       if (!name || !name.trim())
         { cleanup(); return res.status(400).json({ error: 'Name is required.' }); }
-      if (!birth || isNaN(birth) || birth < 1000 || birth > 2100)
+      if (birth !== null && (isNaN(birth) || birth < 1000 || birth > 2100))
         { cleanup(); return res.status(400).json({ error: 'Birth year must be between 1000 and 2100.' }); }
-      if (death !== null && (isNaN(death) || death < birth))
+      if (death !== null && (isNaN(death) || death < 1000 || death > 2100))
+        { cleanup(); return res.status(400).json({ error: 'Death year must be between 1000 and 2100.' }); }
+      if (birth !== null && death !== null && death < birth)
         { cleanup(); return res.status(400).json({ error: 'Death year must be ≥ birth year.' }); }
       if (!gender || !['M', 'F'].includes(gender))
         { cleanup(); return res.status(400).json({ error: 'Gender is required.' }); }

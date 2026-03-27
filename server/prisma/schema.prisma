@@ -10,7 +10,7 @@ datasource db {
 model Person {
   id             String        @id @default(cuid())
   name           String
-  birth          Int
+  birth          Int?
   death          Int?
   gender         String
   profilePicture String?

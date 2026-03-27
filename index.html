@@ -264,6 +264,8 @@
     let svg, zoomLayer, connectorLayer, nodeLayer;
 
     function yearsLabel(p) {
+      if (!p.birth && !p.death) return '';
+      if (!p.birth) return `d. ${p.death}`;
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
     }
 
@@ -504,15 +506,15 @@
       modalError.textContent = '';
 
       const name   = modalName.value.trim();
-      const birth  = parseInt(modalBirth.value, 10);
+      const birth  = modalBirth.value ? parseInt(modalBirth.value, 10) : null;
       const death  = modalDeath.value ? parseInt(modalDeath.value, 10) : null;
       const gender = document.querySelector('input[name="modal-gender"]:checked')?.value;
 
-      if (!name)            { modalError.textContent = 'Name is required.'; return; }
-      if (!birth)           { modalError.textContent = 'Birth year is required.'; return; }
-      if (birth < 1000 || birth > 2100) { modalError.textContent = 'Birth year must be between 1000 and 2100.'; return; }
-      if (death !== null && death < birth) { modalError.textContent = 'Death year must be ≥ birth year.'; return; }
-      if (!gender)          { modalError.textContent = 'Gender is required.'; return; }
+      if (!name)  { modalError.textContent = 'Name is required.'; return; }
+      if (birth !== null && (birth < 1000 || birth > 2100)) { modalError.textContent = 'Birth year must be between 1000 and 2100.'; return; }
+      if (death !== null && (death < 1000 || death > 2100)) { modalError.textContent = 'Death year must be between 1000 and 2100.'; return; }
+      if (birth !== null && death !== null && death < birth) { modalError.textContent = 'Death year must be ≥ birth year.'; return; }
+      if (!gender) { modalError.textContent = 'Gender is required.'; return; }
 
       const personData = { name, birth, death, gender };
       const { mode, target } = modalContext;
@@ -523,7 +525,7 @@
         if (mode === 'edit') {
           const fd = new FormData();
           fd.append('name', name);
-          fd.append('birth', String(birth));
+          if (birth !== null) fd.append('birth', String(birth));
           if (death !== null) fd.append('death', String(death));
           fd.append('gender', gender);
           if (pendingRemovePhoto) {

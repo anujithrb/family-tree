@@ -444,6 +444,7 @@
       if (selectedA.id === selectedB.id) {
         errEl.textContent = 'Please select two different people.';
         errEl.classList.add('visible');
+        btn.disabled = !(selectedA && selectedB);
         return;
       }
 

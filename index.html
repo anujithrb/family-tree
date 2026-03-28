@@ -84,6 +84,7 @@
     <button id="ctx-edit">Edit</button>
     <button id="ctx-add-spouse">Add Spouse</button>
     <button id="ctx-add-child">Add Child</button>
+    <button id="ctx-relationship">Find Relationship To…</button>
     <div class="ctx-sep"></div>
     <button id="ctx-remove">Remove</button>
     <div id="ctx-confirm-area"></div>
@@ -337,6 +338,13 @@
       if (!ctxTarget) return;
       openModal('child', ctxTarget);
       hideCtxMenu();
+    });
+
+    document.getElementById('ctx-relationship').addEventListener('click', () => {
+      if (!ctxTarget) return;
+      const personId = ctxTarget.person.id;
+      hideCtxMenu();
+      window.location.href = `relationship.html?a=${personId}`;
     });
 
     ctxRemove.addEventListener('click', () => {

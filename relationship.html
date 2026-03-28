@@ -378,9 +378,7 @@
       const scale = Math.min(treeW > vw ? vw / treeW : 1, treeH > vh ? vh / treeH : 1, 1);
       const tx = (vw - treeW * scale) / 2;
       const ty = PADDING * scale;
-      zoom = d3.zoom().scaleExtent([0.2, 3])
-        .on('zoom', e => zoomLayer.attr('transform', e.transform));
-      svg.call(zoom).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
     }
 
     // ===== SEARCH DROPDOWNS =====
@@ -438,8 +436,9 @@
     document.getElementById('find-btn').addEventListener('click', async () => {
       if (!selectedA || !selectedB) return;
 
-      const errEl = document.getElementById('search-error');
-      const msgEl = document.getElementById('canvas-msg');
+      const btn    = document.getElementById('find-btn');
+      const errEl  = document.getElementById('search-error');
+      const msgEl  = document.getElementById('canvas-msg');
       errEl.classList.remove('visible');
 
       if (selectedA.id === selectedB.id) {
@@ -448,23 +447,28 @@
         return;
       }
 
+      btn.disabled = true;
       msgEl.textContent = 'Finding relationship…';
       msgEl.style.display = 'flex';
 
-      const res  = await fetch(`/api/relationship?a=${selectedA.id}&b=${selectedB.id}`);
-      const body = await res.json();
+      try {
+        const res  = await fetch(`/api/relationship?a=${selectedA.id}&b=${selectedB.id}`);
+        const body = await res.json();
 
-      if (!res.ok) {
-        msgEl.textContent = res.status === 404
-          ? 'No relationship found between these two people.'
-          : (body.error || 'An error occurred.');
-        connectorLayer.selectAll('*').remove();
-        nodeLayer.selectAll('*').remove();
-        return;
+        if (!res.ok) {
+          msgEl.textContent = res.status === 404
+            ? 'No relationship found between these two people.'
+            : (body.error || 'An error occurred.');
+          connectorLayer.selectAll('*').remove();
+          nodeLayer.selectAll('*').remove();
+          return;
+        }
+
+        msgEl.style.display = 'none';
+        renderSubtree(body);
+      } finally {
+        btn.disabled = !(selectedA && selectedB);
       }
-
-      msgEl.style.display = 'none';
-      renderSubtree(body);
     });
 
     // ===== URL PARAM PRE-FILL =====
@@ -486,6 +490,11 @@
       zoomLayer      = svg.append('g').attr('class', 'zoom-layer');
       connectorLayer = zoomLayer.append('g').attr('class', 'connectors');
       nodeLayer      = zoomLayer.append('g').attr('class', 'nodes');
+
+      zoom = d3.zoom()
+        .scaleExtent([0.2, 3])
+        .on('zoom', e => zoomLayer.attr('transform', e.transform));
+      svg.call(zoom);
 
       const res = await fetch('/api/tree');
       if (!res.ok) { console.error('Failed to load tree data'); return; }

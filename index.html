@@ -277,8 +277,9 @@
     const ctxMenu        = document.getElementById('ctx-menu');
     const ctxEdit        = document.getElementById('ctx-edit');
     const ctxAddSpouse   = document.getElementById('ctx-add-spouse');
-    const ctxAddChild    = document.getElementById('ctx-add-child');
-    const ctxRemove      = document.getElementById('ctx-remove');
+    const ctxAddChild     = document.getElementById('ctx-add-child');
+    const ctxRelationship = document.getElementById('ctx-relationship');
+    const ctxRemove       = document.getElementById('ctx-remove');
     const ctxConfirmArea = document.getElementById('ctx-confirm-area');
 
     function hideCtxMenu() {
@@ -340,7 +341,7 @@
       hideCtxMenu();
     });
 
-    document.getElementById('ctx-relationship').addEventListener('click', () => {
+    ctxRelationship.addEventListener('click', () => {
       if (!ctxTarget) return;
       const personId = ctxTarget.person.id;
       hideCtxMenu();

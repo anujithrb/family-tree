@@ -597,6 +597,11 @@
           break;
         }
       }
+      // Truncate line1 if a single long word was forced onto it
+      if (line1.length * CHAR_W > MAX_W) {
+        const max = Math.floor(MAX_W / CHAR_W) - 1;
+        line1 = line1.slice(0, max) + '\u2026';
+      }
       if (i >= words.length) return { line1, line2: null };
       let line2 = words.slice(i).join(' ');
       if (line2.length * CHAR_W > MAX_W) {

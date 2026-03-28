@@ -350,11 +350,17 @@
         const soloIds      = couple.children.filter(pid => !personCouple[pid]);
 
         const allChildDests = [
-          ...childCouples.map(cc => ({
-            cx:     cc.cx,   // centre of the couple (between the two cards)
-            y:      cc.y,
-            onPath: pathSet.has(cc.spouseA) || pathSet.has(cc.spouseB),
-          })),
+          ...childCouples.map(cc => {
+            const childIsSpouseA = couple.children.includes(cc.spouseA);
+            const childCardCX = childIsSpouseA
+              ? cc.spouseAX + NODE_W / 2
+              : cc.spouseBX + NODE_W / 2;
+            return {
+              cx:     childCardCX,
+              y:      cc.y,
+              onPath: pathSet.has(cc.spouseA) || pathSet.has(cc.spouseB),
+            };
+          }),
           ...soloIds.map(pid => {
             const p = personMap[pid];
             return { cx: p.soloCX, y: p.soloY, onPath: pathSet.has(pid) };
@@ -402,6 +408,14 @@
       personMap   = Object.fromEntries(people.map(p => [p.id, p]));
       personCouple = {};
       couples.forEach(c => { personCouple[c.spouseA] = c; personCouple[c.spouseB] = c; });
+
+      // Highlight both spouses only when the path passes through their couple to children
+      couples.forEach(c => {
+        if (c.children.length > 0) {
+          pathSet.add(c.spouseA);
+          pathSet.add(c.spouseB);
+        }
+      });
 
       // Clear leftover state from previous render
       couples.forEach(c => { delete c.gen; delete c.subtreeWidth; });

@@ -108,4 +108,19 @@ describe('GET /api/relationship', () => {
     const res = await request(app).get(`/api/relationship?a=${alice.id}&b=${bob.id}`);
     expect(res.status).toBe(404);
   });
+
+  test('couples response filters children to path members only', async () => {
+    const { grandpa, dad, child } = await makeFamily();
+    // Path: grandpa → dad → child (through grandpa's couple and dad's couple)
+    // grandpa's couple has one child: dad (on path)
+    // dad's couple has one child: child (on path)
+    // mom (dad's spouse, not on path) should NOT appear in any couple's children
+    const res = await request(app).get(`/api/relationship?a=${grandpa.id}&b=${child.id}`);
+    expect(res.status).toBe(200);
+    const allCoupleChildren = res.body.couples.flatMap(c => c.children);
+    expect(allCoupleChildren).toContain(dad.id);
+    expect(allCoupleChildren).toContain(child.id);
+    // mom.id is NOT a child — it's a spouse; no non-path person should be in children
+    expect(res.body.couples.every(c => c.spouseA !== undefined && c.spouseB !== undefined)).toBe(true);
+  });
 });

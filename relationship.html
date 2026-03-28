@@ -215,6 +215,35 @@
       return p.death ? `${p.birth}–${p.death}` : `b. ${p.birth}`;
     }
 
+    function splitName(name) {
+      const MAX_W = 70;
+      const CHAR_W = 7;
+      const words = name.split(' ');
+      let line1 = '';
+      let i = 0;
+      while (i < words.length) {
+        const candidate = line1 ? line1 + ' ' + words[i] : words[i];
+        if (candidate.length * CHAR_W <= MAX_W || !line1) {
+          line1 = candidate;
+          i++;
+        } else {
+          break;
+        }
+      }
+      // Truncate line1 if a single long word was forced onto it
+      if (line1.length * CHAR_W > MAX_W) {
+        const max = Math.floor(MAX_W / CHAR_W) - 1;
+        line1 = line1.slice(0, max) + '\u2026';
+      }
+      if (i >= words.length) return { line1, line2: null };
+      let line2 = words.slice(i).join(' ');
+      if (line2.length * CHAR_W > MAX_W) {
+        const max = Math.floor(MAX_W / CHAR_W) - 1;
+        line2 = line2.slice(0, max) + '\u2026';
+      }
+      return { line1, line2 };
+    }
+
     function renderNodes() {
       const nodeData = [];
       couples.forEach(couple => {
@@ -269,17 +298,37 @@
         .attr('clip-path', d => `url(#raclip-${d.person.id})`)
         .attr('preserveAspectRatio', 'xMidYMid slice');
 
-      inner.append('text')
-        .attr('x', 46).attr('y', NODE_H / 2 - 9)
-        .attr('fill', '#fff').attr('font-size', '12px').attr('font-weight', '600')
-        .attr('font-family', 'system-ui, sans-serif')
-        .text(d => d.person.name);
+      // Name + years — wraps to two lines for long names
+      inner.each(function(d) {
+        const g = d3.select(this);
+        const { line1, line2 } = splitName(d.person.name);
+        const twoLines = !!line2;
 
-      inner.append('text')
-        .attr('x', 46).attr('y', NODE_H / 2 + 9)
-        .attr('fill', d => C[d.person.gender].years).attr('font-size', '10px')
-        .attr('font-family', 'system-ui, sans-serif')
-        .text(d => yearsLabel(d.person));
+        const nameText = g.append('text')
+          .attr('x', 46)
+          .attr('fill', '#fff')
+          .attr('font-size', '12px')
+          .attr('font-weight', '600')
+          .attr('font-family', 'system-ui, sans-serif');
+
+        if (twoLines) {
+          nameText.append('tspan').attr('x', 46).attr('y', 16).text(line1);
+          nameText.append('tspan').attr('x', 46).attr('y', 29).text(line2);
+        } else {
+          nameText.attr('y', 21).text(line1);
+        }
+
+        g.append('text')
+          .attr('x', 46)
+          .attr('y', twoLines ? 44 : 39)
+          .attr('fill', C[d.person.gender].years)
+          .attr('font-size', '10px')
+          .attr('font-family', 'system-ui, sans-serif')
+          .text(yearsLabel(d.person));
+      });
+
+      // Native SVG tooltip — shows full name on hover
+      groups.append('title').text(d => d.person.name);
     }
 
     function renderConnectors() {

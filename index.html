@@ -42,9 +42,16 @@
 }
 #modal-overlay.open { display: flex; }
 #modal-box {
+  position: relative;
   background: #1a1d27; border: 1px solid #333; border-radius: 10px;
   padding: 24px; width: 320px; font: 14px/1.5 system-ui, sans-serif; color: #fff;
 }
+#modal-close-btn {
+  position: absolute; top: 10px; right: 12px;
+  background: none; border: none; color: #aaa;
+  font-size: 20px; line-height: 1; padding: 0; cursor: pointer;
+}
+#modal-close-btn:hover { color: #fff; }
 #modal-box h2 { margin-bottom: 16px; font-size: 16px; }
 #modal-box label { display: block; margin-bottom: 12px; color: #aaa; font-size: 12px; }
 #modal-box input[type=text], #modal-box input[type=number] {
@@ -91,6 +98,7 @@
   </div>
   <div id="modal-overlay">
   <div id="modal-box">
+    <button id="modal-close-btn" aria-label="Close">&times;</button>
     <h2 id="modal-title">Add Spouse</h2>
     <div id="modal-photo-section" style="display:none; margin-bottom:16px;">
       <div style="color:#aaa;font-size:12px;margin-bottom:8px;">Profile photo</div>
@@ -494,7 +502,7 @@
     }
 
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 
     document.getElementById('modal-photo-input').addEventListener('change', function () {
       if (this.files[0]) {

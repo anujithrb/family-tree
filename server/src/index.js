@@ -11,6 +11,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api', require('./routes/tree'));
 app.use('/api/couples', require('./routes/couples'));
 app.use('/api/people', require('./routes/people'));
+app.use('/api/relationship', require('./routes/relationship'));
 
 app.use(express.static(path.join(__dirname, '../../')));
 app.use(errorHandler);

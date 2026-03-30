@@ -52,6 +52,9 @@ router.post('/', async (req, res, next) => {
     if (!spouseB || typeof spouseB !== 'object') {
       return res.status(400).json({ error: 'spouseB is required' });
     }
+    if (req.body.children !== undefined && !Array.isArray(req.body.children)) {
+      return res.status(400).json({ error: 'children must be an array' });
+    }
 
     const tree = await prisma.$transaction(async tx => {
       const familyTree = await tx.familyTree.create({ data: { name: name.trim() } });

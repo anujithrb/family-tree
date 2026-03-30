@@ -1,5 +1,5 @@
 async function createPerson(data, tx) {
-  const { name, birth, death, gender } = data;
+  const { name, birth, death, gender, treeId } = data;
 
   if (!name || typeof name !== 'string' || name.trim() === '') {
     const err = new Error('name is required');
@@ -30,9 +30,14 @@ async function createPerson(data, tx) {
     err.status = 400;
     throw err;
   }
+  if (!treeId || typeof treeId !== 'string') {
+    const err = new Error('treeId is required');
+    err.status = 400;
+    throw err;
+  }
 
   return tx.person.create({
-    data: { name: name.trim(), birth, death: death ?? null, gender },
+    data: { name: name.trim(), birth, death: death ?? null, gender, treeId },
   });
 }
 

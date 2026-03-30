@@ -1,7 +1,7 @@
 # Family Tree — Prototype Knowledge Export
 
 **Source project:** `family-tree` prototype (Express + PostgreSQL + vanilla JS/D3)
-**Export date:** 2026-03-28
+**Export date:** 2026-03-31
 **Purpose:** Reference for building a production-grade family management app with a separate backend API (Angular web, Android, iOS clients)
 
 ---
@@ -28,6 +28,8 @@
 - **Full re-fetch + full re-render** after every mutation is fast enough (<10ms on this dataset) and radically simpler than incremental updates. Production apps with larger datasets may need pagination or lazy loading.
 - The **relationship finder** (BFS shortest path between two people) is correctly placed on the backend so it can be reused by all clients.
 - **Profile picture upload** via `multipart/form-data` works well; the key lesson is the safe replacement order: write new file → update DB → delete old file (never delete old file before DB commits).
+- **Multi-tree support** via a `FamilyTree` model is feasible without touching `Couple` at all — `treeId` on `Person` is sufficient. A couple's tree is inferred from its spouses; both must share the same `treeId` (enforced at the API level). This avoids the data-integrity problem of cross-tree marriages.
+- A **3-step admin wizard** (name → root couple → children + live preview) is the right onboarding pattern for creating a new family tree. The transaction-per-tree approach (single `POST /api/trees` that creates the tree, both spouses, the couple, and optional children atomically) keeps the backend simple and the client stateless.
 
 ---
 
@@ -36,6 +38,13 @@
 ### Core Schema (Prisma, PostgreSQL)
 
 ```prisma
+model FamilyTree {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  people    Person[]
+}
+
 model Person {
   id             String        @id @default(cuid())
   name           String
@@ -43,6 +52,8 @@ model Person {
   death          Int?          // null = still alive
   gender         String        // "M" | "F"
   profilePicture String?       // relative URL e.g. "/uploads/<uuid>.jpg"
+  treeId         String
+  tree           FamilyTree    @relation(fields: [treeId], references: [id])
   spouseAIn      Couple?       @relation("SpouseA")
   spouseBIn      Couple?       @relation("SpouseB")
   childIn        CoupleChild[]
@@ -71,14 +82,17 @@ model CoupleChild {
 ### ER Diagram
 
 ```
-PERSON ||--o| COUPLE        : "is spouseA of"
-PERSON ||--o| COUPLE        : "is spouseB of"
-COUPLE ||--o{ COUPLE_CHILD  : "has"
-PERSON ||--o{ COUPLE_CHILD  : "appears as child in"
+FAMILY_TREE ||--o{ PERSON      : "owns"
+PERSON      ||--o| COUPLE      : "is spouseA of"
+PERSON      ||--o| COUPLE      : "is spouseB of"
+COUPLE      ||--o{ COUPLE_CHILD: "has"
+PERSON      ||--o{ COUPLE_CHILD: "appears as child in"
 ```
 
 ### Key Constraints & Rules
 
+- Every `Person` belongs to exactly one `FamilyTree` via `treeId`. `Couple` has no `treeId` — a couple's tree is inferred from its spouses (both must share the same `treeId`, enforced at the API level). Cross-tree marriages are not supported.
+- Existing data was migrated to a seed `FamilyTree` named `"Demo Tree"` (id: `demo-tree-seed-id`) via a custom SQL migration that backfills `treeId` on all pre-existing `Person` rows before applying the `NOT NULL` constraint.
 - `spouseAId` and `spouseBId` are `@unique` — **one couple maximum per person**.
 - `spouseA` = the bloodline member (the person who was already in the tree). `spouseB` = the married-in partner. This asymmetry only matters to the layout algorithm and the deletion logic. It is **enforced by UI/seed only** — the DB has no bloodline concept.
 - A person can appear as `spouseA` in their own couple **and** as a child in their parent's `CoupleChild` — this is the generational linking mechanism.
@@ -94,6 +108,7 @@ PERSON ||--o{ COUPLE_CHILD  : "appears as child in"
 | `birth`  | Integer 1000–2100, required |
 | `death`  | Integer ≥ `birth` if provided; optional |
 | `gender` | `"M"` or `"F"`, required |
+| `treeId` | Non-empty string (cuid), required — validated in `createPerson()` |
 
 ### Root Couple Detection
 
@@ -285,12 +300,56 @@ const childCardCX = childIsSpouseA
 
 All routes prefixed `/api`. No authentication in prototype. JSON responses throughout (except `PUT /api/people/:id` which accepts `multipart/form-data`).
 
-### `GET /api/tree`
+### `GET /api/trees`
 
-Returns the full tree. Root couple is always `couples[0]`.
+Returns all family trees with their root couple names.
+
+```json
+[
+  {
+    "id": "clxxx",
+    "name": "The Rajan Family",
+    "createdAt": "2026-03-30T00:00:00.000Z",
+    "rootCouple": { "spouseA": "Arjun Rajan", "spouseB": "Priya Rajan" }
+  }
+]
+```
+
+Root couple is determined by finding the couple whose spouseA is not a child in any other couple's `CoupleChild` rows.
+
+---
+
+### `POST /api/trees`
+
+Creates a new tree with a root couple and optional initial children in a single transaction.
+
+**Body:**
+```json
+{
+  "name": "The Rajan Family",
+  "spouseA": { "name": "Arjun Rajan", "birth": 1960, "gender": "M" },
+  "spouseB": { "name": "Priya Rajan", "birth": 1963, "gender": "F" },
+  "children": [
+    { "name": "Rahul Rajan", "birth": 1985, "gender": "M" }
+  ]
+}
+```
+
+`name`, `spouseA`, `spouseB` are required. `children` is optional (may be omitted or empty array).
+
+**Transaction steps:** Create `FamilyTree` → create spouseA → create spouseB → create `Couple` → for each child: create `Person` + `CoupleChild` (sortOrder = index).
+
+Returns `201` with `{ id, name, createdAt }`. Errors: `400` if name/spouseA/spouseB missing, or `children` is not an array.
+
+---
+
+### `GET /api/tree?treeId=X`
+
+Returns the full tree for the specified `FamilyTree`. Root couple is always `couples[0]`.
 
 ```json
 {
+  "treeName": "The Rajan Family",
   "people": [
     { "id": "...", "name": "Arthur Smith", "birth": 1910, "death": 1985, "gender": "M", "profilePicture": null }
   ],
@@ -300,11 +359,13 @@ Returns the full tree. Root couple is always `couples[0]`.
 }
 ```
 
-`couples[].children` is a flat array of person ID strings, sorted by `sortOrder`.
+`treeName` is new (added with multi-tree support). `couples[].children` is a flat array of person ID strings, sorted by `sortOrder`.
+
+- `400` if `treeId` is missing or unknown.
 
 ---
 
-### `POST /api/couples`
+### `POST /api/couples?treeId=X`
 
 Creates a new couple: existing bloodline person + new spouse.
 
@@ -317,13 +378,14 @@ Creates a new couple: existing bloodline person + new spouse.
 ```
 
 - `existingPersonId` always becomes `spouseA`.
+- New spouse's `treeId` is **inherited from the existing person** (not taken from the query param — the param is used for routing/validation only).
 - Runs in a single Prisma transaction: create spouse person → create couple.
 - Returns `201` with `{ id, spouseAId, spouseBId }`.
-- Errors: `409` if person already in a couple, `404` if person not found, `400` on invalid spouse fields.
+- Errors: `409` if person already in a couple, `404` if person not found, `400` on invalid spouse fields or missing `treeId` param.
 
 ---
 
-### `POST /api/couples/:id/children`
+### `POST /api/couples/:id/children?treeId=X`
 
 Adds a child to an existing couple.
 
@@ -332,9 +394,10 @@ Adds a child to an existing couple.
 { "name": "Ben Smith", "birth": 2015, "death": null, "gender": "M" }
 ```
 
+- New child's `treeId` is **inherited from the couple's spouseA** (not from the query param).
 - `sortOrder` = current child count for the couple (appends to end).
 - Returns `201` with the created person object.
-- Errors: `404` if couple not found, `400` on invalid fields.
+- Errors: `404` if couple not found, `400` on invalid fields or missing `treeId` param.
 
 ---
 
@@ -406,7 +469,7 @@ Run BFS from `a` to `b`.
 
 ### Internal: `createPerson(data, tx)`
 
-Shared module function (not an HTTP route) for creating a person inside a transaction. Validates all fields and throws a tagged 400 error if invalid. Called by `POST /api/couples` and `POST /api/couples/:id/children`. **Not exposed as an HTTP endpoint** — orphaned persons (no couple, no parent) cannot be displayed in the tree.
+Shared module function (not an HTTP route) for creating a person inside a transaction. Validates all fields — including `treeId` — and throws a tagged 400 error if invalid. Called by `POST /api/couples`, `POST /api/couples/:id/children`, and `POST /api/trees`. **Not exposed as an HTTP endpoint** — orphaned persons (no couple, no parent) cannot be displayed in the tree.
 
 ---
 
@@ -491,7 +554,23 @@ Single `<div id="modal-overlay">` reused for "Add Spouse", "Add Child", and "Edi
 
 ### Data Re-fetch Pattern
 
-After every successful mutation, the frontend calls `init()` to re-fetch `/api/tree` and re-render from scratch. Zoom state is preserved by saving `d3.zoomTransform(svg.node())` before clearing and reapplying after render.
+After every successful mutation, the frontend calls `init()` to re-fetch `/api/tree?treeId=X` and re-render from scratch. Zoom state is preserved by saving `d3.zoomTransform(svg.node())` before clearing and reapplying after render.
+
+### admin.html — Card Grid Dashboard
+
+Standalone page (`admin.html`) with no framework dependency. Card grid layout using CSS `grid` with `repeat(auto-fill, minmax(220px, 1fr))`. Cards are prepended (newest first) using `insertBefore(card, grid.children[1])` to keep the `+` card always first.
+
+User-derived content inserted into `innerHTML` (tree names, couple names) is passed through `escHtml()` before insertion.
+
+### 3-Step Wizard Pattern
+
+The creation wizard uses a single `<div id="modal-overlay">` with three child `<div id="step-N">` sections toggled via `style.display`. Step indicator pills use CSS classes (`active`, `done`) updated by `showStep(n)`.
+
+Navigation: `goStep(n)` validates the current step before advancing. Going backward skips validation. `validateStep(n)` is called at the step level — step 3 has no server-side pre-validation (children are optional and only non-empty-named children are sent).
+
+**Mini preview (step 3):** Pure HTML/CSS — no D3, no SVG. Couple cards rendered as `<div>` elements matching the `#1e3a5f`/`#3d1f2e` color scheme. Updates live via `oninput` on all child fields.
+
+**After successful creation:** The response from `POST /api/trees` gives `id` but no `rootCouple` names. The client re-fetches `GET /api/trees` and finds the new entry by `id` to get `rootCouple` names for the card. This double-fetch pattern avoids duplicating the root-couple lookup logic in the POST response.
 
 ---
 
@@ -500,8 +579,8 @@ After every successful mutation, the frontend calls `init()` to re-fetch `/api/t
 | Feature | Notes |
 |---------|-------|
 | Tree visualization | Top-down, couple-centric, 5-generation sample data |
-| Add spouse | Right-click → "Add Spouse" → modal → POST /api/couples |
-| Add child | Right-click → "Add Child" → modal → POST /api/couples/:id/children |
+| Add spouse | Right-click → "Add Spouse" → modal → POST /api/couples?treeId= |
+| Add child | Right-click → "Add Child" → modal → POST /api/couples/:id/children?treeId= |
 | Remove person | Right-click → "Remove" → inline confirm → DELETE /api/people/:id |
 | Edit person | Right-click → "Edit" → pre-filled modal → PUT /api/people/:id |
 | Profile picture | Upload in edit modal; multer + disk storage; UUID filename |
@@ -511,6 +590,10 @@ After every successful mutation, the frontend calls `init()` to re-fetch `/api/t
 | Long name truncation | 2-line wrapping with `…` truncation; native tooltip shows full name |
 | Modal X button | Replaces outside-click-to-close |
 | Zoom/pan | D3 zoom, `scaleExtent([0.2, 3])`, fit-on-load, state preserved across re-renders |
+| Multi-tree support | `FamilyTree` model; all tree data scoped to `?treeId=`; Demo Tree seed migration |
+| Admin dashboard | `admin.html` — card grid showing all trees from GET /api/trees; "View Tree →" link per card |
+| Tree creation wizard | 3-step modal: name → root couple → children + live mini preview; POST /api/trees |
+| treeId URL routing | `index.html` reads `?treeId=` on load; shows error + back link if missing; displays tree name in `<title>` |
 
 ---
 
@@ -558,6 +641,18 @@ The same card-center drop logic that applies to the main tree must also be appli
 ### Full re-render instead of incremental DOM updates
 Re-fetching `/api/tree` and re-running the full layout + render after every mutation is ~10ms on this dataset. This is dramatically simpler than tracking dirty state or diffing SVG elements. Production apps with thousands of nodes may need to reconsider this.
 
+### treeId on Person only, not on Couple
+
+`Couple` has no `treeId` field. A couple's tree is inferred from its spouses — both must share the same `treeId` (enforced at the API level). Putting `treeId` on both `Person` and `Couple` would create a contradiction when spouses come from different trees (cross-tree marriages), requiring either denormalization or a nullable field. By keeping `treeId` on `Person` only, the schema stays clean and the tree-scoping rule is unambiguous.
+
+### treeId inherited from DB record, not query param
+
+When adding a spouse or child (`POST /api/couples`, `POST /api/couples/:id/children`), the new person's `treeId` is read from the existing record in the database (the existing person or couple's spouseA), not from the `?treeId=` query param. The query param is used only for routing validation (reject unknown trees). This prevents a client from injecting a cross-tree `treeId` through the URL.
+
+### Migration: temporary DEFAULT for backfill
+
+When adding a `NOT NULL` `treeId` column to an existing table, Prisma's auto-migration fails because it can't know what value to assign existing rows. The solution: custom SQL migration that (1) inserts the seed `FamilyTree`, (2) adds `treeId` with a `DEFAULT` pointing to the seed id, (3) backfills all rows (covered by the DEFAULT), (4) drops the DEFAULT. This makes the column effectively `NOT NULL` for all new inserts while cleanly migrating existing data.
+
 ### No exposed `POST /api/people` endpoint
 Orphaned persons (no couple, no parent) cannot be rendered in the tree. Preventing creation via the API keeps the data consistent. Person creation is always bundled with a couple or child creation in a transaction.
 
@@ -576,7 +671,9 @@ SVG has no native `measureText`. Using a character width estimate (7px at 12px/6
 
 | Area | Gap |
 |------|-----|
-| Auth | No authentication/authorization |
+| Auth | No authentication/authorization. Admin UI is open with no login. |
+| Per-user tree access | All trees visible to all users. Production needs a `User` model and per-tree access control. |
+| Cross-tree marriages | Spouses must share the same `treeId`. Merging two trees via marriage is not modeled. |
 | Remarriage | A person cannot belong to two couples (DB enforced with `@unique`). Divorce + remarriage is not modeled. |
 | Multiple spouses | Same constraint — one couple per person. |
 | Removing a person with children | Must remove all descendants first (UI prevents this, not a limitation to fix now) |
@@ -600,16 +697,15 @@ These are the key architectural shifts when building the production multi-platfo
 ### Backend (shared API)
 
 - **Add authentication.** Every endpoint needs auth. Consider JWT or session-based auth. The relationship between users and family trees (one user owns a tree? multiple users share a tree?) needs to be designed.
-- **Namespace trees.** The prototype is a single global tree. Production needs a `FamilyTree` model that owns the people and couples (multi-tenancy).
-- **`GET /api/tree` will not scale.** Returning the entire tree on every mutation works for 38 people. For large trees, consider: paginated subtree fetch, fetch-by-generation, or a GraphQL-style selective fetch.
+- **`FamilyTree` model is already implemented.** Multi-tree support with `treeId` scoping on `Person` is shipped. The remaining production gaps are: per-user tree access control (users see only their own trees), and user onboarding flow (first-time tree creation after account creation). The admin interface (`admin.html`) is a prototype of the onboarding pattern.
+- **`GET /api/tree?treeId=X` will not scale.** Returning the entire tree on every mutation works for 38 people. For large trees, consider: paginated subtree fetch, fetch-by-generation, or a GraphQL-style selective fetch.
 - **The relationship BFS endpoint is production-ready.** The backend graph traversal approach (not client-side) is the right call for reuse across Angular/Android/iOS.
 - **`PUT /api/people/:id` multipart approach works for web.** Mobile apps may prefer a two-step approach (upload photo separately → get URL → update person with URL).
 - **File storage.** Move from `server/uploads/` local disk to S3/GCS or equivalent for multi-instance deployments.
 
 ### Data model changes to consider
 
-- Add a `FamilyTree` model; scope `Person` and `Couple` to a tree.
-- Add a `User` model with auth.
+- `FamilyTree` and `treeId` on `Person` are already implemented. Add a `User` model with auth and per-tree access control.
 - Consider adding `relationshipType` to `CoupleChild` for adoption/step-parent modeling.
 - Consider adding `marriageDate`/`divorceDate` to `Couple`.
 - The `gender` field may need expanding beyond "M"/"F" depending on requirements.

@@ -2,6 +2,7 @@ const { prisma } = require('./helpers');
 const { createPerson } = require('../src/lib/createPerson');
 
 let treeId;
+// This tree outlives clearDatabase (which only clears People/Couples) — intentional scope anchor
 beforeAll(async () => {
   const tree = await prisma.familyTree.create({ data: { name: `createPerson-test-${Date.now()}` } });
   treeId = tree.id;
@@ -45,5 +46,20 @@ describe('createPerson validation', () => {
     await expect(
       prisma.$transaction(tx => createPerson({ name: 'Alice', birth: 1980, gender: 'F' }, tx))
     ).rejects.toMatchObject({ status: 400 });
+  });
+
+  test('trims whitespace from name', async () => {
+    const person = await prisma.$transaction(tx =>
+      createPerson({ ...validData(), name: '  Alice  ' }, tx)
+    );
+    expect(person.name).toBe('Alice');
+  });
+
+  test('allows missing birth year', async () => {
+    const { birth, ...dataWithoutBirth } = validData();
+    const person = await prisma.$transaction(tx =>
+      createPerson(dataWithoutBirth, tx)
+    );
+    expect(person.birth).toBeNull();
   });
 });

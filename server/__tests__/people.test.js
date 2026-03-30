@@ -5,6 +5,7 @@ const path = require('path');
 const fs   = require('fs');
 
 let treeId;
+// This tree outlives clearDatabase (which only clears People/Couples) — intentional scope anchor
 beforeAll(async () => {
   const tree = await prisma.familyTree.create({ data: { name: `people-test-${Date.now()}` } });
   treeId = tree.id;

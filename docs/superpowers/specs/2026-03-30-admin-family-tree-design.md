@@ -101,8 +101,8 @@ All existing routes that read or write tree-scoped data require a `?treeId=` que
 | Method | Path | Change |
 |--------|------|--------|
 | GET | `/api/tree?treeId=X` | Filter people + couples to treeId=X; include tree name in response |
-| POST | `/api/couples?treeId=X` | Assign new people to treeId=X |
-| POST | `/api/couples/:id/children?treeId=X` | Validate child belongs to same tree |
+| POST | `/api/couples?treeId=X` | New spouse inherits treeId from existing person; `?treeId=` used for routing/validation only |
+| POST | `/api/couples/:id/children?treeId=X` | New child inherits treeId from couple's spouses; `?treeId=` used for routing/validation only |
 | DELETE | `/api/people/:id` | No change — person carries its own treeId |
 | PUT | `/api/people/:id` | No change |
 

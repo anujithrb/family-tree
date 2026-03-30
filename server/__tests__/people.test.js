@@ -4,11 +4,17 @@ const { prisma, clearDatabase } = require('./helpers');
 const path = require('path');
 const fs   = require('fs');
 
+let treeId;
+// This tree outlives clearDatabase (which only clears People/Couples) — intentional scope anchor
+beforeAll(async () => {
+  const tree = await prisma.familyTree.create({ data: { name: `people-test-${Date.now()}` } });
+  treeId = tree.id;
+});
 beforeEach(clearDatabase);
 afterAll(() => prisma.$disconnect());
 
 test('deletes solo person with no couple', async () => {
-  const p = await prisma.person.create({ data: { name: 'Solo', birth: 1990, gender: 'F' } });
+  const p = await prisma.person.create({ data: { name: 'Solo', birth: 1990, gender: 'F', treeId } });
   const res = await request(app).delete(`/api/people/${p.id}`);
   expect(res.status).toBe(200);
   expect(res.body.deleted).toContain(p.id);
@@ -16,10 +22,10 @@ test('deletes solo person with no couple', async () => {
 });
 
 test('deletes solo person and removes their CoupleChild parent link', async () => {
-  const p1 = await prisma.person.create({ data: { name: 'Arthur',  birth: 1910, gender: 'M' } });
-  const p2 = await prisma.person.create({ data: { name: 'Eleanor', birth: 1913, gender: 'F' } });
+  const p1 = await prisma.person.create({ data: { name: 'Arthur',  birth: 1910, gender: 'M', treeId } });
+  const p2 = await prisma.person.create({ data: { name: 'Eleanor', birth: 1913, gender: 'F', treeId } });
   const parentCouple = await prisma.couple.create({ data: { spouseAId: p1.id, spouseBId: p2.id } });
-  const child = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M' } });
+  const child = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M', treeId } });
   await prisma.coupleChild.create({ data: { coupleId: parentCouple.id, childId: child.id, sortOrder: 0 } });
 
   const res = await request(app).delete(`/api/people/${child.id}`);
@@ -31,8 +37,8 @@ test('deletes solo person and removes their CoupleChild parent link', async () =
 });
 
 test('deleting spouseB dissolves couple; spouseA remains', async () => {
-  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M' } });
-  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F' } });
+  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M', treeId } });
+  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F', treeId } });
   const couple  = await prisma.couple.create({ data: { spouseAId: spouseA.id, spouseBId: spouseB.id } });
 
   const res = await request(app).delete(`/api/people/${spouseB.id}`);
@@ -43,8 +49,8 @@ test('deleting spouseB dissolves couple; spouseA remains', async () => {
 });
 
 test('deleting spouseA also deletes spouseB', async () => {
-  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M' } });
-  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F' } });
+  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M', treeId } });
+  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F', treeId } });
   await prisma.couple.create({ data: { spouseAId: spouseA.id, spouseBId: spouseB.id } });
 
   const res = await request(app).delete(`/api/people/${spouseA.id}`);
@@ -57,12 +63,12 @@ test('deleting spouseA also deletes spouseB', async () => {
 
 test('deleting spouseA removes spouseB CoupleChild parent link if present', async () => {
   // Setup: grandparent couple → spouseB (edge case: spouseB is also a bloodline child)
-  const gp1 = await prisma.person.create({ data: { name: 'GP1', birth: 1890, gender: 'M' } });
-  const gp2 = await prisma.person.create({ data: { name: 'GP2', birth: 1893, gender: 'F' } });
+  const gp1 = await prisma.person.create({ data: { name: 'GP1', birth: 1890, gender: 'M', treeId } });
+  const gp2 = await prisma.person.create({ data: { name: 'GP2', birth: 1893, gender: 'F', treeId } });
   const gpCouple = await prisma.couple.create({ data: { spouseAId: gp1.id, spouseBId: gp2.id } });
 
-  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M' } });
-  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F' } });
+  const spouseA = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M', treeId } });
+  const spouseB = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F', treeId } });
   // spouseB is a child of grandparent couple (edge case the spec guards against)
   await prisma.coupleChild.create({ data: { coupleId: gpCouple.id, childId: spouseB.id, sortOrder: 0 } });
   await prisma.couple.create({ data: { spouseAId: spouseA.id, spouseBId: spouseB.id } });
@@ -77,10 +83,10 @@ test('deleting spouseA removes spouseB CoupleChild parent link if present', asyn
 });
 
 test('returns 409 when person has children', async () => {
-  const p1 = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M' } });
-  const p2 = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F' } });
+  const p1 = await prisma.person.create({ data: { name: 'Thomas', birth: 1935, gender: 'M', treeId } });
+  const p2 = await prisma.person.create({ data: { name: 'Helen',  birth: 1938, gender: 'F', treeId } });
   const couple = await prisma.couple.create({ data: { spouseAId: p1.id, spouseBId: p2.id } });
-  const child  = await prisma.person.create({ data: { name: 'James',  birth: 1962, gender: 'M' } });
+  const child  = await prisma.person.create({ data: { name: 'James',  birth: 1962, gender: 'M', treeId } });
   await prisma.coupleChild.create({ data: { coupleId: couple.id, childId: child.id, sortOrder: 0 } });
 
   const res = await request(app).delete(`/api/people/${p1.id}`);
@@ -93,7 +99,7 @@ test('returns 404 for unknown id', async () => {
 });
 
 test('deletes the profile picture file when person is removed', async () => {
-  const person = await prisma.person.create({ data: { name: 'Picasso', birth: 1970, gender: 'M' } });
+  const person = await prisma.person.create({ data: { name: 'Picasso', birth: 1970, gender: 'M', treeId } });
 
   // Give the person a fake profile picture
   const filename = 'test-pic.png';
@@ -119,7 +125,7 @@ describe('PUT /api/people/:id', () => {
 
   beforeEach(async () => {
     person = await prisma.person.create({
-      data: { name: 'Alice', birth: 1980, gender: 'F' },
+      data: { name: 'Alice', birth: 1980, gender: 'F', treeId },
     });
   });
 
@@ -309,11 +315,11 @@ describe('PUT /api/people/:id', () => {
 });
 
 test('GET /api/tree includes profilePicture in person objects', async () => {
-  const p1 = await prisma.person.create({ data: { name: 'A', birth: 1900, gender: 'M' } });
-  const p2 = await prisma.person.create({ data: { name: 'B', birth: 1902, gender: 'F' } });
+  const p1 = await prisma.person.create({ data: { name: 'A', birth: 1900, gender: 'M', treeId } });
+  const p2 = await prisma.person.create({ data: { name: 'B', birth: 1902, gender: 'F', treeId } });
   await prisma.couple.create({ data: { spouseAId: p1.id, spouseBId: p2.id } });
 
-  const res = await request(app).get('/api/tree');
+  const res = await request(app).get(`/api/tree?treeId=${treeId}`);
   expect(res.status).toBe(200);
   expect(res.body.people.every(p => 'profilePicture' in p)).toBe(true);
 });

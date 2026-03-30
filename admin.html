@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Family Tree Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f1117; color: #fff; font: 14px/1.5 system-ui, sans-serif; min-height: 100vh; padding: 32px 24px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+
+    /* Card grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card {
+      background: #1a1d27; border: 1px solid #333; border-radius: 10px;
+      padding: 18px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .card-new {
+      border: 2px dashed #444; align-items: center; justify-content: center;
+      cursor: pointer; min-height: 130px; color: #666; font-size: 13px; gap: 6px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .card-new:hover { border-color: #6ab0f5; color: #6ab0f5; }
+    .card-new .plus { font-size: 28px; line-height: 1; }
+    .card-name { font-weight: 600; font-size: 15px; }
+    .card-couple { color: #aaa; font-size: 12px; }
+    .card-date { color: #555; font-size: 11px; }
+    .card-view {
+      margin-top: auto; padding: 6px 12px; background: #2a2d3a; border: 1px solid #444;
+      border-radius: 6px; color: #6ab0f5; font: inherit; font-size: 12px;
+      cursor: pointer; text-align: center; text-decoration: none; display: block;
+      transition: background 0.15s;
+    }
+    .card-view:hover { background: #333; }
+
+    /* Modal overlay */
+    #modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.65); align-items: center; justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal-box {
+      background: #1a1d27; border: 1px solid #333; border-radius: 10px;
+      padding: 28px; width: 100%; max-width: 540px; position: relative;
+      font: 14px/1.5 system-ui, sans-serif; color: #fff;
+      max-height: 90vh; overflow-y: auto;
+    }
+    #modal-close {
+      position: absolute; top: 12px; right: 14px; background: none; border: none;
+      color: #aaa; font-size: 20px; cursor: pointer; line-height: 1; padding: 0;
+    }
+    #modal-close:hover { color: #fff; }
+
+    /* Step indicator */
+    .steps { display: flex; gap: 4px; margin-bottom: 20px; align-items: center; font-size: 12px; color: #555; }
+    .steps .step { padding: 3px 10px; border-radius: 12px; background: #2a2d3a; }
+    .steps .step.active { background: #2a4a7a; color: #6ab0f5; }
+    .steps .step.done { background: #1a3a2a; color: #4a9; }
+    .steps .sep { color: #444; }
+
+    /* Form elements */
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+    .field input, .field select {
+      width: 100%; padding: 8px 10px; background: #0f1117; border: 1px solid #444;
+      border-radius: 6px; color: #fff; font: inherit; outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: #6ab0f5; }
+    .spouse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 480px) { .spouse-grid { grid-template-columns: 1fr; } }
+
+    /* Step 3 layout */
+    .step3-wrap { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 560px) { .step3-wrap { grid-template-columns: 1fr 1fr; } }
+
+    /* Mini preview */
+    .preview-box {
+      background: #111; border: 1px solid #2a2a2a; border-radius: 8px;
+      padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+      min-height: 120px;
+    }
+    .preview-label { font-size: 10px; color: #555; letter-spacing: 0.08em; text-transform: uppercase; }
+    .preview-couple { display: flex; align-items: center; gap: 6px; }
+    .preview-card {
+      border-radius: 5px; padding: 5px 10px; font-size: 11px; text-align: center; min-width: 72px;
+    }
+    .preview-card.male { background: #1e3a5f; }
+    .preview-card.female { background: #3d1f2e; }
+    .preview-card .gender-label { font-size: 9px; color: #aaa; margin-bottom: 2px; }
+    .preview-card .person-name { font-weight: 500; word-break: break-word; }
+    .preview-line { width: 24px; height: 2px; background: #444; }
+    .preview-vline { width: 2px; height: 12px; background: #444; }
+    .preview-hbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+    /* Child rows */
+    .child-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .child-row input, .child-row select { flex: 1; min-width: 0; }
+    .child-row .remove-btn {
+      background: none; border: none; color: #666; font-size: 16px; cursor: pointer;
+      padding: 0 4px; line-height: 1; flex-shrink: 0;
+    }
+    .child-row .remove-btn:hover { color: #f08080; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    button.btn {
+      padding: 8px 18px; border: none; border-radius: 6px; font: inherit;
+      cursor: pointer; font-size: 13px;
+    }
+    button.btn-primary { background: #2a4a7a; color: #6ab0f5; }
+    button.btn-primary:hover { background: #2f5490; }
+    button.btn-secondary { background: #2a2d3a; color: #aaa; }
+    button.btn-secondary:hover { background: #333; }
+    button.btn-add {
+      width: 100%; padding: 7px; background: #1a1d27; border: 1px dashed #444;
+      border-radius: 6px; color: #666; font: inherit; font-size: 12px; cursor: pointer;
+      margin-bottom: 10px;
+    }
+    button.btn-add:hover { border-color: #6ab0f5; color: #6ab0f5; }
+    .error-msg { color: #f08080; font-size: 12px; margin-top: 8px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Family Tree Admin</h1>
+  <div class="grid" id="tree-grid">
+    <div class="card card-new" id="new-card" onclick="openWizard()">
+      <div class="plus">+</div>
+      <div>New Tree</div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal-overlay">
+    <div id="modal-box">
+      <button id="modal-close" type="button" onclick="closeWizard()">✕</button>
+
+      <div class="steps">
+        <div class="step" id="step-ind-1">1. Name</div>
+        <div class="sep">›</div>
+        <div class="step" id="step-ind-2">2. Root Couple</div>
+        <div class="sep">›</div>
+        <div class="step" id="step-ind-3">3. Children</div>
+      </div>
+
+      <!-- Step 1 -->
+      <div id="step-1">
+        <h2 style="font-size:16px;margin-bottom:16px">Name your tree</h2>
+        <div class="field">
+          <label>Tree name *</label>
+          <input type="text" id="tree-name" placeholder="e.g. The Rajan Family" autocomplete="off"/>
+        </div>
+        <div class="error-msg" id="err-1"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" type="button" onclick="closeWizard()">Cancel</button>
+          <button class="btn btn-primary" type="button" onclick="goStep(2)">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="step-2" style="display:none">
+        <h2 style="font-size:16px;margin-bottom:16px">Root couple</h2>
+        <div class="spouse-grid">
+          <div>
+            <div style="font-size:12px;color:#aaa;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.06em">Spouse A</div>
+            <div class="field"><label>Full name *</label><input type="text" id="spouseA-name" placeholder="Name" autocomplete="off"/></div>
+            <div class="field"><label>Birth year *</label><input type="number" id="spouseA-birth" placeholder="e.g. 1960" min="1000" max="2100"/></div>
+            <div class="field">
+              <label>Gender *</label>
+              <select id="spouseA-gender"><option value="M">Male</option><option value="F">Female</option></select>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:#aaa;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.06em">Spouse B</div>
+            <div class="field"><label>Full name *</label><input type="text" id="spouseB-name" placeholder="Name" autocomplete="off"/></div>
+            <div class="field"><label>Birth year *</label><input type="number" id="spouseB-birth" placeholder="e.g. 1963" min="1000" max="2100"/></div>
+            <div class="field">
+              <label>Gender *</label>
+              <select id="spouseB-gender"><option value="F">Female</option><option value="M">Male</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="error-msg" id="err-2"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" type="button" onclick="goStep(1)">← Back</button>
+          <button class="btn btn-primary" type="button" onclick="goStep(3)">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div id="step-3" style="display:none">
+        <h2 style="font-size:16px;margin-bottom:16px">Add children <span style="color:#555;font-weight:400;font-size:13px">(optional)</span></h2>
+        <div class="step3-wrap">
+          <div>
+            <div id="children-list"></div>
+            <button class="btn-add" type="button" onclick="addChildRow()">+ Add Child</button>
+          </div>
+          <div class="preview-box" id="preview-box">
+            <div class="preview-label">Preview</div>
+            <div id="preview-content"></div>
+          </div>
+        </div>
+        <div class="error-msg" id="err-3"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" type="button" onclick="goStep(2)">← Back</button>
+          <button class="btn btn-primary" type="button" id="create-btn" onclick="createTree()">Create Tree</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  let currentStep = 1;
+  let childCounter = 0;
+
+  // ── Init ──────────────────────────────────────────────────────
+  async function loadTrees() {
+    const res = await fetch('/api/trees');
+    if (!res.ok) return;
+    const trees = await res.json();
+    trees.forEach(t => prependCard(t));
+  }
+
+  function prependCard(tree) {
+    const grid = document.getElementById('tree-grid');
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.treeId = tree.id;
+    const couple = tree.rootCouple
+      ? `${tree.rootCouple.spouseA} & ${tree.rootCouple.spouseB}`
+      : '—';
+    const date = new Date(tree.createdAt).toLocaleDateString();
+    card.innerHTML = `
+      <div class="card-name">${escHtml(tree.name)}</div>
+      <div class="card-couple">${escHtml(couple)}</div>
+      <div class="card-date">${date}</div>
+      <a class="card-view" href="index.html?treeId=${tree.id}">View Tree →</a>
+    `;
+    grid.insertBefore(card, grid.children[1]);
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Wizard ────────────────────────────────────────────────────
+  function openWizard() {
+    currentStep = 1;
+    document.getElementById('modal-overlay').classList.add('open');
+    showStep(1);
+    document.getElementById('tree-name').focus();
+  }
+
+  function closeWizard() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    resetWizard();
+  }
+
+  function resetWizard() {
+    ['tree-name','spouseA-name','spouseB-name','spouseA-birth','spouseB-birth'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('spouseA-gender').value = 'M';
+    document.getElementById('spouseB-gender').value = 'F';
+    document.getElementById('children-list').innerHTML = '';
+    childCounter = 0;
+    ['err-1','err-2','err-3'].forEach(id => document.getElementById(id).textContent = '');
+    renderPreview();
+  }
+
+  function showStep(n) {
+    [1, 2, 3].forEach(i => {
+      document.getElementById(`step-${i}`).style.display = i === n ? '' : 'none';
+      const ind = document.getElementById(`step-ind-${i}`);
+      ind.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+    });
+    currentStep = n;
+  }
+
+  function goStep(n) {
+    if (n > currentStep && !validateStep(currentStep)) return;
+    showStep(n);
+    if (n === 3) renderPreview();
+  }
+
+  function validateStep(n) {
+    const err = id => document.getElementById(id);
+    if (n === 1) {
+      const name = document.getElementById('tree-name').value.trim();
+      if (!name) { err('err-1').textContent = 'Tree name is required.'; return false; }
+      err('err-1').textContent = '';
+      return true;
+    }
+    if (n === 2) {
+      const aName = document.getElementById('spouseA-name').value.trim();
+      const bName = document.getElementById('spouseB-name').value.trim();
+      const aBirth = document.getElementById('spouseA-birth').value;
+      const bBirth = document.getElementById('spouseB-birth').value;
+      if (!aName || !bName) { err('err-2').textContent = 'Both spouse names are required.'; return false; }
+      if (!aBirth || !bBirth) { err('err-2').textContent = 'Both birth years are required.'; return false; }
+      err('err-2').textContent = '';
+      return true;
+    }
+    return true;
+  }
+
+  // ── Children ──────────────────────────────────────────────────
+  function addChildRow() {
+    const id = ++childCounter;
+    const list = document.getElementById('children-list');
+    const row = document.createElement('div');
+    row.className = 'child-row';
+    row.dataset.childId = id;
+    row.innerHTML = `
+      <input type="text" placeholder="Name" oninput="renderPreview()" data-field="name" autocomplete="off"/>
+      <input type="number" placeholder="Year" min="1000" max="2100" style="max-width:72px" oninput="renderPreview()" data-field="birth"/>
+      <select oninput="renderPreview()" data-field="gender">
+        <option value="M">M</option><option value="F">F</option>
+      </select>
+      <button class="remove-btn" type="button" onclick="removeChild(this)" title="Remove">✕</button>
+    `;
+    list.appendChild(row);
+    row.querySelector('[data-field="name"]').focus();
+    renderPreview();
+  }
+
+  function removeChild(btn) {
+    btn.closest('.child-row').remove();
+    renderPreview();
+  }
+
+  function getChildren() {
+    return Array.from(document.querySelectorAll('.child-row')).map(row => ({
+      name: row.querySelector('[data-field="name"]').value.trim(),
+      birth: parseInt(row.querySelector('[data-field="birth"]').value, 10) || null,
+      gender: row.querySelector('[data-field="gender"]').value,
+    }));
+  }
+
+  // ── Mini preview ──────────────────────────────────────────────
+  function renderPreview() {
+    const aName = (document.getElementById('spouseA-name')?.value || '').trim() || 'Spouse A';
+    const bName = (document.getElementById('spouseB-name')?.value || '').trim() || 'Spouse B';
+    const aGender = document.getElementById('spouseA-gender')?.value || 'M';
+    const bGender = document.getElementById('spouseB-gender')?.value || 'F';
+    const children = getChildren();
+
+    let html = `
+      <div class="preview-couple">
+        <div class="preview-card ${aGender === 'M' ? 'male' : 'female'}">
+          <div class="gender-label">${aGender === 'M' ? 'M' : 'F'}</div>
+          <div class="person-name">${escHtml(aName.split(' ')[0])}</div>
+        </div>
+        <div class="preview-line"></div>
+        <div class="preview-card ${bGender === 'M' ? 'male' : 'female'}">
+          <div class="gender-label">${bGender === 'M' ? 'M' : 'F'}</div>
+          <div class="person-name">${escHtml(bName.split(' ')[0])}</div>
+        </div>
+      </div>`;
+
+    if (children.length > 0) {
+      html += `<div class="preview-vline"></div><div class="preview-hbar">`;
+      children.forEach(c => {
+        const name = c.name || '?';
+        const cls = c.gender === 'F' ? 'female' : 'male';
+        html += `<div class="preview-card ${cls}">
+          <div class="gender-label">${c.gender}</div>
+          <div class="person-name">${escHtml(name.split(' ')[0] || '?')}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    document.getElementById('preview-content').innerHTML = html;
+  }
+
+  // ── Create tree ───────────────────────────────────────────────
+  async function createTree() {
+    if (!validateStep(3)) return;
+
+    const btn = document.getElementById('create-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+
+    const children = getChildren().filter(c => c.name);
+
+    const payload = {
+      name: document.getElementById('tree-name').value.trim(),
+      spouseA: {
+        name: document.getElementById('spouseA-name').value.trim(),
+        birth: parseInt(document.getElementById('spouseA-birth').value, 10),
+        gender: document.getElementById('spouseA-gender').value,
+      },
+      spouseB: {
+        name: document.getElementById('spouseB-name').value.trim(),
+        birth: parseInt(document.getElementById('spouseB-birth').value, 10),
+        gender: document.getElementById('spouseB-gender').value,
+      },
+      children,
+    };
+
+    try {
+      const res = await fetch('/api/trees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Request failed');
+
+      // Re-fetch the full tree entry (we need rootCouple names)
+      const listRes = await fetch('/api/trees');
+      const list = await listRes.json();
+      const newTree = list.find(t => t.id === body.id);
+      if (newTree) prependCard(newTree);
+
+      closeWizard();
+    } catch (err) {
+      document.getElementById('err-3').textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Tree';
+    }
+  }
+
+  // ── Bootstrap ─────────────────────────────────────────────────
+  loadTrees();
+</script>
+</body>
+</html>

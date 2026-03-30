@@ -66,10 +66,17 @@ async function main() {
   await prisma.couple.deleteMany();
   await prisma.person.deleteMany();
 
+  console.log('Upserting demo tree…');
+  await prisma.familyTree.upsert({
+    where: { id: 'demo-tree-seed-id' },
+    update: {},
+    create: { id: 'demo-tree-seed-id', name: 'Demo Tree' },
+  });
+
   console.log('Seeding people…');
   const idMap = {};
   for (const { key, ...data } of people) {
-    const p = await prisma.person.create({ data });
+    const p = await prisma.person.create({ data: { ...data, treeId: 'demo-tree-seed-id' } });
     idMap[key] = p.id;
   }
 

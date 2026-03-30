@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Routes mounted here in later tasks
+app.use('/api/trees', require('./routes/trees'));
 app.use('/api', require('./routes/tree'));
 app.use('/api/couples', require('./routes/couples'));
 app.use('/api/people', require('./routes/people'));

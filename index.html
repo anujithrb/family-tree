@@ -86,6 +86,7 @@
 </head>
 <body>
   <svg id="tree"></svg>
+  <a id="admin-link" href="admin.html" style="position:fixed;top:14px;left:16px;color:#6ab0f5;font:13px system-ui,sans-serif;text-decoration:none;z-index:50;">← Admin</a>
   <div id="hint">Scroll to zoom · Drag to pan</div>
   <div id="ctx-menu">
     <button id="ctx-edit">Edit</button>
@@ -140,6 +141,9 @@
   </div>
 </div>
   <script>
+    // ===== TREE SELECTION =====
+    const treeId = new URLSearchParams(window.location.search).get('treeId');
+
     // ===== STATE (populated by init) =====
     let people  = [];
     let couples = [];
@@ -552,14 +556,14 @@
           }
           res = await fetch(`/api/people/${target.person.id}`, { method: 'PUT', body: fd });
         } else if (mode === 'spouse') {
-          res = await fetch('/api/couples', {
+          res = await fetch(`/api/couples?treeId=${treeId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ existingPersonId: target.person.id, spouse: personData }),
           });
         } else {
           const coupleId = target.coupleId;
-          res = await fetch(`/api/couples/${coupleId}/children`, {
+          res = await fetch(`/api/couples/${coupleId}/children?treeId=${treeId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(personData),
@@ -820,12 +824,19 @@
       // Save viewport position across re-renders
       const prevTransform = (svg && zoom) ? d3.zoomTransform(svg.node()) : null;
 
+      // Guard: treeId required
+      if (!treeId) {
+        document.body.innerHTML = '<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font:16px system-ui,sans-serif;color:#aaa;background:#0f1117"><p>No tree selected.</p><a href="admin.html" style="color:#6ab0f5">← Return to Admin</a></div>';
+        return;
+      }
+
       // Fetch tree data
-      const res = await fetch('/api/tree');
+      const res = await fetch(`/api/tree?treeId=${treeId}`);
       if (!res.ok) { console.error('Failed to load tree:', res.status); return; }
       const data = await res.json();
       people  = data.people;
       couples = data.couples;
+      document.title = data.treeName ? `${data.treeName} — Family Tree` : 'Family Tree';
 
       // Rebuild helper maps from fresh data
       personMap = Object.fromEntries(people.map(p => [p.id, p]));

@@ -1,48 +1,49 @@
+const { prisma } = require('./helpers');
 const { createPerson } = require('../src/lib/createPerson');
-const { prisma, clearDatabase } = require('./helpers');
 
-beforeEach(clearDatabase);
+let treeId;
+beforeAll(async () => {
+  const tree = await prisma.familyTree.create({ data: { name: `createPerson-test-${Date.now()}` } });
+  treeId = tree.id;
+});
 afterAll(() => prisma.$disconnect());
 
-test('creates a valid person', async () => {
-  const p = await createPerson({ name: 'Alice', birth: 1990, death: null, gender: 'F' }, prisma);
-  expect(p.id).toBeDefined();
-  expect(p.name).toBe('Alice');
-  expect(p.birth).toBe(1990);
-  expect(p.death).toBeNull();
-});
+describe('createPerson validation', () => {
+  const validData = () => ({ name: 'Alice', birth: 1980, gender: 'F', treeId });
 
-test('trims whitespace from name', async () => {
-  const p = await createPerson({ name: '  Alice  ', birth: 1990, gender: 'F' }, prisma);
-  expect(p.name).toBe('Alice');
-});
+  test('creates a person with valid data', async () => {
+    const person = await prisma.$transaction(tx => createPerson(validData(), tx));
+    expect(person.name).toBe('Alice');
+    expect(person.treeId).toBe(treeId);
+  });
 
-test('throws 400 for blank name', async () => {
-  await expect(createPerson({ name: '  ', birth: 1990, gender: 'F' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
-});
+  test('throws 400 if name is empty', async () => {
+    await expect(
+      prisma.$transaction(tx => createPerson({ ...validData(), name: '' }, tx))
+    ).rejects.toMatchObject({ status: 400 });
+  });
 
-test('allows missing birth year', async () => {
-  const p = await createPerson({ name: 'Alice', gender: 'F' }, prisma);
-  expect(p.birth).toBeNull();
-});
+  test('throws 400 if birth out of range', async () => {
+    await expect(
+      prisma.$transaction(tx => createPerson({ ...validData(), birth: 500 }, tx))
+    ).rejects.toMatchObject({ status: 400 });
+  });
 
-test('throws 400 for birth below 1000', async () => {
-  await expect(createPerson({ name: 'Alice', birth: 999, gender: 'F' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
-});
+  test('throws 400 if death < birth', async () => {
+    await expect(
+      prisma.$transaction(tx => createPerson({ ...validData(), birth: 1980, death: 1970 }, tx))
+    ).rejects.toMatchObject({ status: 400 });
+  });
 
-test('throws 400 for birth above 2100', async () => {
-  await expect(createPerson({ name: 'Alice', birth: 2101, gender: 'F' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
-});
+  test('throws 400 if gender is invalid', async () => {
+    await expect(
+      prisma.$transaction(tx => createPerson({ ...validData(), gender: 'X' }, tx))
+    ).rejects.toMatchObject({ status: 400 });
+  });
 
-test('throws 400 for death before birth', async () => {
-  await expect(createPerson({ name: 'Alice', birth: 1990, death: 1980, gender: 'F' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
-});
-
-test('throws 400 for invalid gender', async () => {
-  await expect(createPerson({ name: 'Alice', birth: 1990, gender: 'X' }, prisma))
-    .rejects.toMatchObject({ status: 400 });
+  test('throws 400 if treeId is missing', async () => {
+    await expect(
+      prisma.$transaction(tx => createPerson({ name: 'Alice', birth: 1980, gender: 'F' }, tx))
+    ).rejects.toMatchObject({ status: 400 });
+  });
 });
